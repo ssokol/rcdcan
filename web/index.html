@@ -55,6 +55,28 @@
   .axis {
     font-weight: 600;
     letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .motion-indicator {
+    font-size: 18px;
+    line-height: 1;
+    color: var(--good);
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+  }
+  .motion-indicator.visible {
+    visibility: visible;
+    opacity: 1;
+  }
+  .motion-indicator.reverse {
+    color: var(--danger);
   }
   .btn {
     display: inline-flex;
@@ -153,19 +175,28 @@
       <h2>Trim Axes</h2>
 
       <div class="row">
-        <div class="axis">Elevator</div>
+        <div class="axis">
+          <span>Elevator</span>
+          <span class="motion-indicator" data-motion-axis="elevator" aria-hidden="true"></span>
+        </div>
         <button class="btn neg" data-axis="0" data-dir="neg">-NEG</button>
         <button class="btn pos" data-axis="0" data-dir="pos">+POS</button>
       </div>
 
       <div class="row">
-        <div class="axis">Aileron</div>
+        <div class="axis">
+          <span>Aileron</span>
+          <span class="motion-indicator" data-motion-axis="aileron" aria-hidden="true"></span>
+        </div>
         <button class="btn neg" data-axis="1" data-dir="neg">-NEG</button>
         <button class="btn pos" data-axis="1" data-dir="pos">+POS</button>
       </div>
 
       <div class="row">
-        <div class="axis">Rudder</div>
+        <div class="axis">
+          <span>Rudder</span>
+          <span class="motion-indicator" data-motion-axis="rudder" aria-hidden="true"></span>
+        </div>
         <button class="btn neg" data-axis="2" data-dir="neg">-NEG</button>
         <button class="btn pos" data-axis="2" data-dir="pos">+POS</button>
       </div>
@@ -219,6 +250,20 @@
   }
 
   let trimButtons = Array.from(document.querySelectorAll('.btn[data-axis]'));
+  const trimMotionIndicators = {
+    ElevatorMotion: {
+      el: document.querySelector('[data-motion-axis="elevator"]'),
+      label: 'Elevator'
+    },
+    AileronMotion: {
+      el: document.querySelector('[data-motion-axis="aileron"]'),
+      label: 'Aileron'
+    },
+    RudderMotion: {
+      el: document.querySelector('[data-motion-axis="rudder"]'),
+      label: 'Rudder'
+    }
+  };
 
   trimButtons.forEach(function (btn) {
     let axis = btn.getAttribute('data-axis');
@@ -408,6 +453,49 @@ function buildRelays() {
   });
 
   // -------- Status WebSocket --------
+  function setTrimMotionIndicator(entry, motionValue) {
+    if (!entry || !entry.el) {
+      return;
+    }
+
+    const indicator = entry.el;
+    let arrow = '';
+    let ariaLabel = '';
+
+    indicator.classList.remove('visible', 'reverse');
+    indicator.textContent = '';
+    indicator.removeAttribute('aria-label');
+
+    const motion = Number(motionValue);
+
+    if (motion === 1) {
+      arrow = '→';
+      ariaLabel = entry.label + ' trim moving forward';
+      indicator.classList.add('visible');
+      indicator.setAttribute('aria-hidden', 'false');
+    } else if (motion === 255 || motion === -1) {
+      arrow = '←';
+      ariaLabel = entry.label + ' trim moving reverse';
+      indicator.classList.add('visible', 'reverse');
+      indicator.setAttribute('aria-hidden', 'false');
+    } else {
+      indicator.setAttribute('aria-hidden', 'true');
+      indicator.removeAttribute('aria-label');
+      return;
+    }
+
+    indicator.textContent = arrow;
+    indicator.setAttribute('aria-label', ariaLabel);
+  }
+
+  function updateTrimMotionIndicators(payload) {
+    Object.keys(trimMotionIndicators).forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) {
+        setTrimMotionIndicator(trimMotionIndicators[key], payload[key]);
+      }
+    });
+  }
+
   function updateRelayIndicators(states) {
     for (let i = 0; i < relayIndicators.length; i++) {
       const indicator = relayIndicators[i];
@@ -425,9 +513,15 @@ function buildRelays() {
     socket.addEventListener('message', function (event) {
       try {
         const payload = JSON.parse(event.data);
-        if (payload && Object.prototype.hasOwnProperty.call(payload, 'Relays')) {
+        if (!payload) {
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, 'Relays')) {
           updateRelayIndicators(payload.Relays);
         }
+
+        updateTrimMotionIndicators(payload);
       } catch (err) {
         console.warn('Failed to parse status payload', err);
       }
