@@ -102,6 +102,22 @@
   .pos:hover { background: #204064; }
   .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
 
+  /* Inputs panel */
+  .inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 10px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .inputs-labels {
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .inputs-statuses {
+    justify-items: center;
+  }
+
   /* Relay panel */
   .rel-grid {
     display: grid;
@@ -151,7 +167,8 @@
   .btn-blue:hover { background: #1a3a5c; }
   .btn-red   { background: #4a1f1f; border-color: rgba(182,42,42,0.5); }
   .btn-red:hover { background: #5a2626; }
-  .relay-status {
+  .relay-status,
+  .input-status {
     width: 18px;
     height: 18px;
     border-radius: 50%;
@@ -160,7 +177,8 @@
     box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35);
     justify-self: center;
   }
-  .relay-status.on {
+  .relay-status.on,
+  .input-status.on {
     background: var(--good);
     box-shadow: 0 0 8px rgba(56,161,105,0.65);
   }
@@ -220,6 +238,33 @@
         <div class="axis">Stepped</div>
         <button class="btn neg" id="flap-step-retract">Retract</button>
         <button class="btn pos" id="flap-step-extend">Extend</button>
+      </div>
+    </div>
+
+    <!-- Inputs -->
+    <div class="card">
+      <h2>Inputs</h2>
+
+      <div class="inputs-grid inputs-labels" aria-hidden="true">
+        <div>1</div>
+        <div>2</div>
+        <div>3</div>
+        <div>4</div>
+        <div>5</div>
+        <div>6</div>
+        <div>7</div>
+        <div>8</div>
+      </div>
+
+      <div class="inputs-grid inputs-statuses" role="group" aria-label="Digital input status">
+        <div class="input-status" data-input-idx="0" aria-label="Input 1 open"></div>
+        <div class="input-status" data-input-idx="1" aria-label="Input 2 open"></div>
+        <div class="input-status" data-input-idx="2" aria-label="Input 3 open"></div>
+        <div class="input-status" data-input-idx="3" aria-label="Input 4 open"></div>
+        <div class="input-status" data-input-idx="4" aria-label="Input 5 open"></div>
+        <div class="input-status" data-input-idx="5" aria-label="Input 6 open"></div>
+        <div class="input-status" data-input-idx="6" aria-label="Input 7 open"></div>
+        <div class="input-status" data-input-idx="7" aria-label="Input 8 open"></div>
       </div>
     </div>
 
@@ -364,12 +409,20 @@ function buildRelays() {
 }
 
   const relayIndicators = [];
+  const inputIndicators = [];
 
   buildRelays();
 
   document.querySelectorAll('.relay-status').forEach(function (indicator) {
     const idx = parseInt(indicator.getAttribute('data-idx'), 10);
     relayIndicators[idx] = indicator;
+  });
+
+  document.querySelectorAll('.input-status').forEach(function (indicator) {
+    const idx = parseInt(indicator.getAttribute('data-input-idx'), 10);
+    if (!Number.isNaN(idx)) {
+      inputIndicators[idx] = indicator;
+    }
   });
 
   async function postRelay(idx, state, dur) {
@@ -505,6 +558,16 @@ function buildRelays() {
     }
   }
 
+  function updateInputIndicators(states) {
+    for (let i = 0; i < inputIndicators.length; i++) {
+      const indicator = inputIndicators[i];
+      if (!indicator) { continue; }
+      const isClosed = Array.isArray(states) && Boolean(states[i]);
+      indicator.classList.toggle('on', isClosed);
+      indicator.setAttribute('aria-label', 'Input ' + (i + 1) + (isClosed ? ' closed' : ' open'));
+    }
+  }
+
   function connectStatusSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = protocol + '//' + window.location.host + '/status';
@@ -519,6 +582,10 @@ function buildRelays() {
 
         if (Object.prototype.hasOwnProperty.call(payload, 'Relays')) {
           updateRelayIndicators(payload.Relays);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, 'Inputs')) {
+          updateInputIndicators(payload.Inputs);
         }
 
         updateTrimMotionIndicators(payload);
