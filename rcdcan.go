@@ -79,13 +79,16 @@ type RcdInhibitFlags struct {
 type RcdState struct {
 	mutex sync.RWMutex
 
-	RelayBits    uint8
-	InputBits    uint8
-	TrimActivity uint8
-	FlapMotion   uint8
-	FlapStep     uint8
-	LandingState uint8
-	InhibitMask  uint8
+	RelayBits      uint8
+	InputBits      uint8
+	TrimActivity   uint8
+	ElevatorMotion uint8
+	AileronMotion  uint8
+	RudderMotion   uint8
+	FlapMotion     uint8
+	FlapStep       uint8
+	LandingState   uint8
+	InhibitMask    uint8
 
 	Relays  [8]bool
 	Inputs  [8]bool
@@ -212,10 +215,10 @@ func expandBits(b byte, invert bool) [8]bool {
 	for i := 0; i < 8; i++ {
 		mask := byte(1) << uint(i)
 		val := (b & mask) != 0
-		if (invert) {
-		  out[i] = !val
+		if invert {
+			out[i] = !val
 		} else {
-		  out[i] = val
+			out[i] = val
 		}
 	}
 
@@ -235,6 +238,22 @@ func updateRcdStateFromTelemetry(data []byte) {
 	landingState := data[5]
 	inhibitMask := data[6]
 
+	decodeTrimAxisMotion := func(activity uint8, shift uint) uint8 {
+		state := (activity >> shift) & 0x03
+		switch state {
+		case 0b01:
+			return 1
+		case 0b10:
+			return 0xFF
+		default:
+			return 0
+		}
+	}
+
+	elevatorMotion := decodeTrimAxisMotion(trimActivity, 0)
+	aileronMotion := decodeTrimAxisMotion(trimActivity, 2)
+	rudderMotion := decodeTrimAxisMotion(trimActivity, 4)
+
 	relays := expandBits(relayBits, false)
 	inputs := expandBits(inputBits, true)
 
@@ -252,6 +271,9 @@ func updateRcdStateFromTelemetry(data []byte) {
 	rcdState.RelayBits = relayBits
 	rcdState.InputBits = inputBits
 	rcdState.TrimActivity = trimActivity
+	rcdState.ElevatorMotion = elevatorMotion
+	rcdState.AileronMotion = aileronMotion
+	rcdState.RudderMotion = rudderMotion
 	rcdState.FlapMotion = flapMotion
 	rcdState.FlapStep = flapStep
 	rcdState.LandingState = landingState
@@ -261,7 +283,7 @@ func updateRcdStateFromTelemetry(data []byte) {
 	rcdState.Inhibit = inhibits
 
 	rcdState.mutex.Unlock()
-	
+
 	// send to websocket
 	statusUpdate.SendJSON(rcdState)
 }
