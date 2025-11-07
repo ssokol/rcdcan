@@ -1,0 +1,122 @@
+
+package main
+
+import (
+	"flag"
+	"log"
+	_"time"
+	"net"
+  _"os"
+  
+	"github.com/brutella/can"
+)
+
+const EffFlag uint32 = 1 << 31
+
+// direction constants
+const DIR_POS uint8 = 1
+const DIR_NEG uint8 = 255
+
+// axis constants - used as the instance values in CAN ID
+const AXIS_ELEVATOR uint8 = 0
+const AXIS_AILERON uint8 = 1
+const AXIS_RUDDER uint8 = 2
+
+// CAN bus
+var canbus *can.Bus
+
+const (
+	priorityControl  = 0x02
+	classActuation   = 0x09
+	functionTrimCmd  = 0x10
+	sourceTestNode   = 0x01
+	instanceElevator = 0x00
+)
+
+func makeCanID(priority, cls, function, source, instance uint32) uint32 {
+	const (
+		posInstance = 0
+		posSource   = 5
+		posFunction = 13
+		posClass    = 21
+		posPriority = 26
+	)
+
+	id := uint32(0)
+	id |= (priority & 0x07) << posPriority
+	id |= (cls & 0x1F) << posClass
+	id |= (function & 0xFF) << posFunction
+	id |= (source & 0xFF) << posSource
+	id |= (instance & 0x1F) << posInstance
+
+  id |= EffFlag
+
+	return id
+}
+
+func sendCanMessage(axis, direction uint8) {
+
+	frameID := makeCanID(priorityControl, classActuation, functionTrimCmd, sourceTestNode, uint32(axis))
+
+	frame := can.Frame{
+		ID:       frameID,
+		Length:   2,
+    Flags:    0,
+    Res0:     0,
+    Res1:     0,
+	}
+	
+	frame.Data[0] = direction  // direction +1
+	frame.Data[1] = 2 // duration 2.0s (tenths)
+
+  if err := canbus.Publish(frame); err != nil {
+    log.Fatalf("failed to publish frame: %v", err)
+  }
+}
+
+/*
+func sendStuff() {
+
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+
+	for sent := 0; sent < 5; sent++ {
+    sendCanMessage(AXIS_ELEVATOR, DIR_NEG)
+		if sent < 4 {
+			<-ticker.C
+		}
+	}
+
+  os.Exit(0)
+}
+*/
+
+func main() {
+	
+	ifname := flag.String("if", "CAN0", "CAN interface to use")
+	flag.Parse()
+
+	iface, err := net.InterfaceByName(*ifname)
+
+	if err != nil {
+		log.Printf("Could not find network interface %s (%v)", "can0", err)
+		return
+	}
+
+	conn, err := can.NewReadWriteCloserForInterface(iface)
+	if err != nil {
+		log.Printf("Unable to open CAN bus %s. Error: %s\n", *ifname, err)
+		return
+	}
+
+	bus := can.NewBus(conn)
+  	
+	defer bus.Disconnect()
+
+  canbus = bus
+  
+  //go sendStuff()
+
+  bus.ConnectAndPublish()
+}
+
