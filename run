@@ -1,0 +1,3 @@
+#!/bin/bash
+cd ~/rcdcan/
+./rcdcan -if CAN0 -http :8081 -period 100
