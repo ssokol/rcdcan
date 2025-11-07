@@ -83,7 +83,7 @@
   /* Relay panel */
   .rel-grid {
     display: grid;
-    grid-template-columns: 48px 1fr 1fr 1fr; /* # | toggle | timed | momentary */
+    grid-template-columns: 48px 1fr 1fr 1fr 32px; /* # | toggle | timed | momentary | status */
     gap: 12px;
     align-items: center;
     margin-bottom: 8px;
@@ -129,6 +129,19 @@
   .btn-blue:hover { background: #1a3a5c; }
   .btn-red   { background: #4a1f1f; border-color: rgba(182,42,42,0.5); }
   .btn-red:hover { background: #5a2626; }
+  .relay-status {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4a4f5a;
+    border: 1px solid rgba(255,255,255,0.15);
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35);
+    justify-self: center;
+  }
+  .relay-status.on {
+    background: var(--good);
+    box-shadow: 0 0 8px rgba(56,161,105,0.65);
+  }
 </style>
 </head>
 <body>
@@ -297,13 +310,22 @@ function buildRelays() {
 
       '<div>' +
         '<button class="btn btn-red" data-action="momentary" data-idx="' + i + '">Momentary</button>' +
-      '</div>';
+      '</div>' +
+
+      '<div class="relay-status" data-idx="' + i + '" aria-label="Relay ' + (i + 1) + ' status"></div>';
 
     container.appendChild(row);
   }
 }
 
+  const relayIndicators = [];
+
   buildRelays();
+
+  document.querySelectorAll('.relay-status').forEach(function (indicator) {
+    const idx = parseInt(indicator.getAttribute('data-idx'), 10);
+    relayIndicators[idx] = indicator;
+  });
 
   async function postRelay(idx, state, dur) {
     let url = '/api/relay'
@@ -384,6 +406,43 @@ function buildRelays() {
     [0,1,2].forEach(function (ax) { postRelease(ax); });
     postFlaps(0);
   });
+
+  // -------- Status WebSocket --------
+  function updateRelayIndicators(states) {
+    for (let i = 0; i < relayIndicators.length; i++) {
+      const indicator = relayIndicators[i];
+      if (!indicator) { continue; }
+      const isOn = Array.isArray(states) && Boolean(states[i]);
+      indicator.classList.toggle('on', isOn);
+    }
+  }
+
+  function connectStatusSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.host + '/status';
+    const socket = new WebSocket(wsUrl);
+
+    socket.addEventListener('message', function (event) {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload && Object.prototype.hasOwnProperty.call(payload, 'Relays')) {
+          updateRelayIndicators(payload.Relays);
+        }
+      } catch (err) {
+        console.warn('Failed to parse status payload', err);
+      }
+    });
+
+    socket.addEventListener('close', function () {
+      setTimeout(connectStatusSocket, 2000);
+    });
+
+    socket.addEventListener('error', function () {
+      socket.close();
+    });
+  }
+
+  connectStatusSocket();
 })();
 </script>
 </body>
