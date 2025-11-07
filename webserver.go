@@ -3,12 +3,46 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 	"net/http"
 	"strconv"
 	"strings"
+	"golang.org/x/net/websocket"
 )
 
 const uiHTMLPath = "web/index.html"
+
+var statusUpdate *uibroadcaster
+
+func handleStatusWS(conn *websocket.Conn) {
+
+	statusUpdate.AddSocket(conn)
+	for {
+		buf := make([]byte, 1024)
+		_, err := conn.Read(buf)
+		if err != nil {
+			break
+		}
+		if buf[0] != 0 { // Dummy.
+			continue
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func initiWebsockets(mux *http.ServeMux) {
+
+	log.Printf("Starting WebSocket Server\n")
+	
+	statusUpdate = NewUIBroadcaster()
+	statusUpdate.prefix = "STATUS"
+	mux.HandleFunc("/status",
+		func(w http.ResponseWriter, req *http.Request) {
+			s := websocket.Server{
+				Handler: websocket.Handler(handleStatusWS)}
+			s.ServeHTTP(w, req)
+		})
+ }
 
 func startWebServer(pm *pressManager, fm *flapPressManager, addr string) *http.Server {
 	mux := http.NewServeMux()
@@ -194,6 +228,9 @@ func startWebServer(pm *pressManager, fm *flapPressManager, addr string) *http.S
 		Addr:    addr,
 		Handler: mux,
 	}
+
+  // start the status socket
+  initiWebsockets(mux)
 
 	go func() {
 		log.Printf("Web UI listening on %s", addr)

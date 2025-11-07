@@ -206,12 +206,17 @@ func sendRelayMessage(relayIdx uint8, state uint8, duration uint8) {
 
 // -------------------- Telemetry decode --------------------
 
-func expandBits(b byte) [8]bool {
+func expandBits(b byte, invert bool) [8]bool {
 	var out [8]bool
 
 	for i := 0; i < 8; i++ {
 		mask := byte(1) << uint(i)
-		out[i] = (b & mask) != 0
+		val := (b & mask) != 0
+		if (invert) {
+		  out[i] = !val
+		} else {
+		  out[i] = val
+		}
 	}
 
 	return out
@@ -230,8 +235,8 @@ func updateRcdStateFromTelemetry(data []byte) {
 	landingState := data[5]
 	inhibitMask := data[6]
 
-	relays := expandBits(relayBits)
-	inputs := expandBits(inputBits)
+	relays := expandBits(relayBits, false)
+	inputs := expandBits(inputBits, true)
 
 	var inhibits RcdInhibitFlags
 
@@ -256,6 +261,9 @@ func updateRcdStateFromTelemetry(data []byte) {
 	rcdState.Inhibit = inhibits
 
 	rcdState.mutex.Unlock()
+	
+	// send to websocket
+	statusUpdate.SendJSON(rcdState)
 }
 
 func rcdTelemetryHandler(f can.Frame) {
