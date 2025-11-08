@@ -117,11 +117,25 @@
   .inputs-statuses {
     justify-items: center;
   }
+  .inputs-label-row {
+    margin-top: -4px;
+    margin-bottom: 0;
+  }
+  .input-label {
+    font-size: 14px;
+    color: var(--fg);
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    word-break: break-word;
+  }
 
   /* Relay panel */
   .rel-grid {
     display: grid;
-    grid-template-columns: 48px 1fr 1fr 1fr 32px; /* # | toggle | timed | momentary | status */
+    grid-template-columns: 48px minmax(0, 160px) 80px 1fr 1fr 32px; /* # | label | toggle | timed | momentary | status */
     gap: 12px;
     align-items: center;
     margin-bottom: 8px;
@@ -130,6 +144,13 @@
     text-align: right;
     padding-right: 8px;
     color: var(--muted);
+  }
+  .relay-label {
+    color: var(--fg);
+    font-size: 14px;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
   }
   .toggle {
     width: 64px;
@@ -266,6 +287,17 @@
         <div class="input-status" data-input-idx="6" aria-label="Input 7 open"></div>
         <div class="input-status" data-input-idx="7" aria-label="Input 8 open"></div>
       </div>
+
+      <div class="inputs-grid inputs-label-row" role="presentation">
+        <div class="input-label" data-input-label="0"></div>
+        <div class="input-label" data-input-label="1"></div>
+        <div class="input-label" data-input-label="2"></div>
+        <div class="input-label" data-input-label="3"></div>
+        <div class="input-label" data-input-label="4"></div>
+        <div class="input-label" data-input-label="5"></div>
+        <div class="input-label" data-input-label="6"></div>
+        <div class="input-label" data-input-label="7"></div>
+      </div>
     </div>
 
     <!-- Relays -->
@@ -388,6 +420,8 @@ function buildRelays() {
     row.innerHTML =
       '<div class="relay-num">' + (i + 1) + '</div>' +
 
+      '<div class="relay-label" data-relay-label="' + i + '"></div>' +
+
       '<div class="toggle" data-idx="' + i + '">' +
         '<div class="knob"></div>' +
       '</div>' +
@@ -410,6 +444,10 @@ function buildRelays() {
 
   const relayIndicators = [];
   const inputIndicators = [];
+  const relayLabelElements = [];
+  const inputLabelElements = [];
+  const relayLabelTexts = new Array(8).fill('');
+  const inputLabelTexts = new Array(8).fill('');
 
   buildRelays();
 
@@ -418,12 +456,27 @@ function buildRelays() {
     relayIndicators[idx] = indicator;
   });
 
+  document.querySelectorAll('[data-relay-label]').forEach(function (labelEl) {
+    const idx = parseInt(labelEl.getAttribute('data-relay-label'), 10);
+    relayLabelElements[idx] = labelEl;
+  });
+
   document.querySelectorAll('.input-status').forEach(function (indicator) {
     const idx = parseInt(indicator.getAttribute('data-input-idx'), 10);
     if (!Number.isNaN(idx)) {
       inputIndicators[idx] = indicator;
     }
   });
+
+  document.querySelectorAll('[data-input-label]').forEach(function (labelEl) {
+    const idx = parseInt(labelEl.getAttribute('data-input-label'), 10);
+    if (!Number.isNaN(idx)) {
+      inputLabelElements[idx] = labelEl;
+    }
+  });
+
+  updateRelayLabels(relayLabelTexts);
+  updateInputLabels(inputLabelTexts);
 
   async function postRelay(idx, state, dur) {
     let url = '/api/relay'
@@ -555,6 +608,8 @@ function buildRelays() {
       if (!indicator) { continue; }
       const isOn = Array.isArray(states) && Boolean(states[i]);
       indicator.classList.toggle('on', isOn);
+      const label = relayLabelTexts[i] && relayLabelTexts[i].trim() !== '' ? relayLabelTexts[i] : 'Relay ' + (i + 1);
+      indicator.setAttribute('aria-label', label + (isOn ? ' on' : ' off'));
     }
   }
 
@@ -564,7 +619,48 @@ function buildRelays() {
       if (!indicator) { continue; }
       const isClosed = Array.isArray(states) && Boolean(states[i]);
       indicator.classList.toggle('on', isClosed);
-      indicator.setAttribute('aria-label', 'Input ' + (i + 1) + (isClosed ? ' closed' : ' open'));
+      const label = inputLabelTexts[i] && inputLabelTexts[i].trim() !== '' ? inputLabelTexts[i] : 'Input ' + (i + 1);
+      indicator.setAttribute('aria-label', label + (isClosed ? ' closed' : ' open'));
+    }
+  }
+
+  function updateRelayLabels(labels) {
+    if (!Array.isArray(labels)) {
+      return;
+    }
+
+    for (let i = 0; i < relayLabelElements.length; i++) {
+      const el = relayLabelElements[i];
+      if (!el) { continue; }
+      const label = typeof labels[i] === 'string' ? labels[i] : '';
+      relayLabelTexts[i] = label;
+      el.textContent = label !== '' ? label : '\u2014';
+      const indicator = relayIndicators[i];
+      if (indicator) {
+        const isOn = indicator.classList.contains('on');
+        const name = label !== '' ? label : 'Relay ' + (i + 1);
+        indicator.setAttribute('aria-label', name + (isOn ? ' on' : ' off'));
+      }
+    }
+  }
+
+  function updateInputLabels(labels) {
+    if (!Array.isArray(labels)) {
+      return;
+    }
+
+    for (let i = 0; i < inputLabelElements.length; i++) {
+      const el = inputLabelElements[i];
+      if (!el) { continue; }
+      const label = typeof labels[i] === 'string' ? labels[i] : '';
+      inputLabelTexts[i] = label;
+      el.textContent = label !== '' ? label : '\u2014';
+      const indicator = inputIndicators[i];
+      if (indicator) {
+        const isClosed = indicator.classList.contains('on');
+        const name = label !== '' ? label : 'Input ' + (i + 1);
+        indicator.setAttribute('aria-label', name + (isClosed ? ' closed' : ' open'));
+      }
     }
   }
 
@@ -586,6 +682,14 @@ function buildRelays() {
 
         if (Object.prototype.hasOwnProperty.call(payload, 'Inputs')) {
           updateInputIndicators(payload.Inputs);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, 'RelayLabels')) {
+          updateRelayLabels(payload.RelayLabels);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, 'InputLabels')) {
+          updateInputLabels(payload.InputLabels);
         }
 
         updateTrimMotionIndicators(payload);

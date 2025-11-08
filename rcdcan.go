@@ -52,6 +52,12 @@ const (
 	functionRelaySet     = 0x42
 	functionRcdTelemStat = 0x52
 
+	functionConfigGet   = 0x60
+	functionConfigReply = 0x62
+
+	configInstanceAllLabels = 16
+	configDataElementLabel  = 0x04
+
 	sourceTestNode = 0x01
 )
 
@@ -93,9 +99,52 @@ type RcdState struct {
 	Relays  [8]bool
 	Inputs  [8]bool
 	Inhibit RcdInhibitFlags
+
+	RelayLabels [8]string
+	InputLabels [8]string
 }
 
 var rcdState RcdState
+
+type labelCollector struct {
+	received [2]bool
+	chunks   [2][6]byte
+}
+
+var labelCollectors = struct {
+	sync.Mutex
+	entries map[uint8]*labelCollector
+}{
+	entries: make(map[uint8]*labelCollector),
+}
+
+var labelReceipt = struct {
+	sync.Mutex
+	received map[uint8]bool
+}{
+	received: make(map[uint8]bool),
+}
+
+func decodeLabel(chunks [2][6]byte) string {
+	var combined [12]byte
+
+	copy(combined[0:6], chunks[0][:])
+	copy(combined[6:12], chunks[1][:])
+
+	end := len(combined)
+	for i, b := range combined[:] {
+		if b == 0 {
+			end = i
+			break
+		}
+	}
+
+	if end < 0 {
+		end = 0
+	}
+
+	return string(combined[:end])
+}
 
 // -------------------- CAN helpers --------------------
 
@@ -126,6 +175,11 @@ func extractClass(id uint32) uint32 {
 func extractFunction(id uint32) uint32 {
 	const posFunction = 13
 	return (id >> posFunction) & 0xFF
+}
+
+func extractInstance(id uint32) uint32 {
+	const posInstance = 0
+	return (id >> posInstance) & 0x1F
 }
 
 // -------------------- Send helpers --------------------
@@ -207,6 +261,55 @@ func sendRelayMessage(relayIdx uint8, state uint8, duration uint8) {
 	}
 }
 
+func requestAllLabels() {
+	if canbus == nil {
+		return
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		uint32(configInstanceAllLabels),
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = configDataElementLabel
+
+	if err := canbus.Publish(frame); err != nil {
+		log.Printf("failed to request label data: %v", err)
+		return
+	}
+
+	log.Printf("Requested label data for all relays and inputs")
+}
+
+func scheduleLabelRequests() {
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		requestAllLabels()
+
+		for attempt := 0; attempt < 4; attempt++ {
+			time.Sleep(2 * time.Second)
+			if allLabelsReceived() {
+				return
+			}
+
+			log.Printf("Label data incomplete, retrying request (attempt %d)", attempt+2)
+			requestAllLabels()
+		}
+
+		if !allLabelsReceived() {
+			log.Printf("Label data still incomplete after retries")
+		}
+	}()
+}
+
 // -------------------- Telemetry decode --------------------
 
 func expandBits(b byte, invert bool) [8]bool {
@@ -286,6 +389,166 @@ func updateRcdStateFromTelemetry(data []byte) {
 
 	// send to websocket
 	statusUpdate.SendJSON(rcdState)
+}
+
+func sequenceSlot(seq byte, collector *labelCollector) (int, bool) {
+	switch seq {
+	case 0:
+		return 0, true
+	case 1:
+		if collector != nil && !collector.received[0] {
+			return 0, true
+		}
+		return 1, true
+	case 2:
+		return 1, true
+	default:
+		if seq%2 == 0 {
+			return 0, true
+		}
+		return 1, true
+	}
+}
+
+func storeLabelChunk(instance uint8, seq byte, chunk []byte) (string, bool) {
+	if len(chunk) < 6 {
+		return "", false
+	}
+
+	labelCollectors.Lock()
+	collector, ok := labelCollectors.entries[instance]
+	if !ok {
+		collector = &labelCollector{}
+		labelCollectors.entries[instance] = collector
+	}
+
+	idx, valid := sequenceSlot(seq, collector)
+	if !valid || idx < 0 || idx > 1 {
+		labelCollectors.Unlock()
+		return "", false
+	}
+
+	copy(collector.chunks[idx][:], chunk[:6])
+	collector.received[idx] = true
+
+	ready := collector.received[0] && collector.received[1]
+	var label string
+	if ready {
+		label = decodeLabel(collector.chunks)
+		collector.received = [2]bool{}
+	}
+
+	labelCollectors.Unlock()
+
+	return label, ready
+}
+
+func markLabelReceived(instance uint8) bool {
+	labelReceipt.Lock()
+	_, already := labelReceipt.received[instance]
+	labelReceipt.received[instance] = true
+	labelReceipt.Unlock()
+
+	return !already
+}
+
+func allLabelsReceived() bool {
+	labelReceipt.Lock()
+	defer labelReceipt.Unlock()
+
+	for i := uint8(0); i < 16; i++ {
+		if !labelReceipt.received[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func applyLabelToState(instance uint8, label string) {
+	if instance >= 16 {
+		return
+	}
+
+	changed := false
+	logChange := false
+	var snapshot RcdState
+
+	rcdState.mutex.Lock()
+	switch {
+	case instance < 8:
+		prev := rcdState.RelayLabels[instance]
+		if prev != label {
+			logChange = true
+		}
+		rcdState.RelayLabels[instance] = label
+		changed = true
+	default:
+		idx := instance - 8
+		if idx < 8 {
+			prev := rcdState.InputLabels[idx]
+			if prev != label {
+				logChange = true
+			}
+			rcdState.InputLabels[idx] = label
+			changed = true
+		}
+	}
+
+	if changed {
+		snapshot = rcdState
+	}
+
+	rcdState.mutex.Unlock()
+
+	if changed {
+		first := markLabelReceived(instance)
+
+		if logChange {
+			if instance < 8 {
+				log.Printf("Received relay %d label: %q", instance, label)
+			} else {
+				log.Printf("Received input %d label: %q", instance-8, label)
+			}
+		}
+
+		if statusUpdate != nil && (logChange || first) {
+			statusUpdate.SendJSON(snapshot)
+		}
+	}
+}
+
+func rcdConfigReplyHandler(f can.Frame) {
+	if (f.ID & EffFlag) == 0 {
+		return
+	}
+
+	if extractClass(f.ID) != uint32(classActuation) {
+		return
+	}
+
+	if extractFunction(f.ID) != uint32(functionConfigReply) {
+		return
+	}
+
+	if int(f.Length) < 8 {
+		return
+	}
+
+	payload := f.Data[:f.Length]
+	if payload[0] != configDataElementLabel {
+		return
+	}
+
+	instance := uint8(extractInstance(f.ID))
+	seq := payload[1]
+
+	label, ready := storeLabelChunk(instance, seq, payload[2:])
+	if !ready {
+		return
+	}
+
+	applyLabelToState(instance, label)
 }
 
 func rcdTelemetryHandler(f can.Frame) {
@@ -468,8 +731,9 @@ func main() {
 
 	canbus = bus
 
-	// Subscribe for RCD telemetry
+	// Subscribe for RCD telemetry and config replies
 	bus.SubscribeFunc(rcdTelemetryHandler)
+	bus.SubscribeFunc(rcdConfigReplyHandler)
 
 	pm := newPressManager(time.Duration(*periodMs) * time.Millisecond)
 	fm := newFlapPressManager(100 * time.Millisecond)
@@ -502,6 +766,8 @@ func main() {
 
 		_ = bus.Disconnect()
 	}()
+
+	scheduleLabelRequests()
 
 	log.Printf("Connecting to CAN and publishing…")
 	bus.ConnectAndPublish()
