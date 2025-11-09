@@ -56,7 +56,11 @@ const (
 	functionConfigReply = 0x62
 
 	configInstanceAllLabels = 16
-	configDataElementLabel  = 0x04
+
+	configDataElementTrimFlapAxis = 0x01
+	configDataElementLandingLight = 0x02
+	configDataElementFlapMode     = 0x03
+	configDataElementLabel        = 0x04
 
 	sourceTestNode = 0x01
 )
@@ -82,6 +86,30 @@ type RcdInhibitFlags struct {
 	Start bool
 }
 
+type TrimFlapAxisConfig struct {
+	RelayPos   uint8  `json:"relay_pos"`
+	RelayNeg   uint8  `json:"relay_neg"`
+	InputPos   uint8  `json:"in_pos"`
+	InputNeg   uint8  `json:"in_neg"`
+	DeadtimeMs uint16 `json:"dead_ms"`
+	DebounceMs uint16 `json:"deb_ms"`
+	MaxRunMs   uint32 `json:"max_run"`
+}
+
+type LandingLightConfig struct {
+	RelayA        uint8  `json:"relay_a"`
+	RelayB        uint8  `json:"relay_b"`
+	InputOn       uint8  `json:"input_on"`
+	InputWigwag   uint8  `json:"input_wigwag"`
+	CadenceTenths uint8  `json:"cadence_tenths"`
+	DeadtimeMs    uint16 `json:"deadtime_ms"`
+}
+
+type FlapModeConfig struct {
+	Mode   uint8     `json:"mode"`
+	StepMs [3]uint16 `json:"step_ms"`
+}
+
 type RcdState struct {
 	mutex sync.RWMutex
 
@@ -102,6 +130,14 @@ type RcdState struct {
 
 	RelayLabels [8]string
 	InputLabels [8]string
+
+	TrimElev TrimFlapAxisConfig `json:"trim_elev"`
+	TrimAil  TrimFlapAxisConfig `json:"trim_ail"`
+	TrimRud  TrimFlapAxisConfig `json:"trim_rud"`
+	Flaps    TrimFlapAxisConfig `json:"flaps"`
+
+	Landing   LandingLightConfig `json:"landing"`
+	FlapsMode FlapModeConfig     `json:"flaps_mode"`
 }
 
 var rcdState RcdState
@@ -307,6 +343,96 @@ func scheduleLabelRequests() {
 		if !allLabelsReceived() {
 			log.Printf("Label data still incomplete after retries")
 		}
+	}()
+}
+
+func requestTrimFlapAxisConfig(instance uint8) {
+	if canbus == nil {
+		return
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		uint32(instance),
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = configDataElementTrimFlapAxis
+
+	if err := canbus.Publish(frame); err != nil {
+		log.Printf("failed to request trim/flap axis config (instance %d): %v", instance, err)
+	}
+}
+
+func requestLandingLightConfig() {
+	if canbus == nil {
+		return
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		0,
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = configDataElementLandingLight
+
+	if err := canbus.Publish(frame); err != nil {
+		log.Printf("failed to request landing light config: %v", err)
+	}
+}
+
+func requestFlapModeConfig() {
+	if canbus == nil {
+		return
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		0,
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = configDataElementFlapMode
+
+	if err := canbus.Publish(frame); err != nil {
+		log.Printf("failed to request flap mode config: %v", err)
+	}
+}
+
+func scheduleConfigRequests() {
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+
+		for _, inst := range []uint8{0, 1, 2, 3} {
+			requestTrimFlapAxisConfig(inst)
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		requestLandingLightConfig()
+		time.Sleep(50 * time.Millisecond)
+		requestFlapModeConfig()
 	}()
 }
 
@@ -531,24 +657,157 @@ func rcdConfigReplyHandler(f can.Frame) {
 		return
 	}
 
-	if int(f.Length) < 8 {
+	if int(f.Length) < 1 {
 		return
 	}
 
 	payload := f.Data[:f.Length]
-	if payload[0] != configDataElementLabel {
-		return
-	}
-
+	element := payload[0]
 	instance := uint8(extractInstance(f.ID))
-	seq := payload[1]
 
-	label, ready := storeLabelChunk(instance, seq, payload[2:])
-	if !ready {
+	switch element {
+	case configDataElementLabel:
+		if len(payload) < 8 {
+			return
+		}
+
+		seq := payload[1]
+
+		label, ready := storeLabelChunk(instance, seq, payload[2:])
+		if !ready {
+			return
+		}
+
+		applyLabelToState(instance, label)
+	case configDataElementTrimFlapAxis:
+		if len(payload) < 8 {
+			return
+		}
+
+		cfg := TrimFlapAxisConfig{
+			RelayPos:   payload[1],
+			RelayNeg:   payload[2],
+			InputPos:   payload[3],
+			InputNeg:   payload[4],
+			DeadtimeMs: uint16(payload[5]) * 10,
+			DebounceMs: uint16(payload[6]) * 10,
+		}
+
+		if payload[7] == 0 {
+			cfg.MaxRunMs = 0
+		} else {
+			cfg.MaxRunMs = uint32(payload[7]) * 100
+		}
+
+		applyTrimFlapAxisConfig(instance, cfg)
+	case configDataElementLandingLight:
+		if len(payload) < 7 {
+			return
+		}
+
+		cfg := LandingLightConfig{
+			RelayA:        payload[1],
+			RelayB:        payload[2],
+			InputOn:       payload[3],
+			InputWigwag:   payload[4],
+			CadenceTenths: payload[5],
+			DeadtimeMs:    uint16(payload[6]) * 10,
+		}
+
+		applyLandingLightConfig(cfg)
+	case configDataElementFlapMode:
+		if len(payload) < 5 {
+			return
+		}
+
+		cfg := FlapModeConfig{
+			Mode: payload[1],
+			StepMs: [3]uint16{
+				uint16(payload[2]) * 100,
+				uint16(payload[3]) * 100,
+				uint16(payload[4]) * 100,
+			},
+		}
+
+		applyFlapModeConfig(cfg)
+	}
+}
+
+func applyTrimFlapAxisConfig(instance uint8, cfg TrimFlapAxisConfig) {
+	if instance > 3 {
 		return
 	}
 
-	applyLabelToState(instance, label)
+	changed := false
+	var snapshot RcdState
+
+	rcdState.mutex.Lock()
+	switch instance {
+	case 0:
+		if rcdState.TrimElev != cfg {
+			rcdState.TrimElev = cfg
+			changed = true
+		}
+	case 1:
+		if rcdState.TrimAil != cfg {
+			rcdState.TrimAil = cfg
+			changed = true
+		}
+	case 2:
+		if rcdState.TrimRud != cfg {
+			rcdState.TrimRud = cfg
+			changed = true
+		}
+	case 3:
+		if rcdState.Flaps != cfg {
+			rcdState.Flaps = cfg
+			changed = true
+		}
+	}
+
+	if changed {
+		snapshot = rcdState
+	}
+
+	rcdState.mutex.Unlock()
+
+	if changed && statusUpdate != nil {
+		statusUpdate.SendJSON(snapshot)
+	}
+}
+
+func applyLandingLightConfig(cfg LandingLightConfig) {
+	changed := false
+	var snapshot RcdState
+
+	rcdState.mutex.Lock()
+	if rcdState.Landing != cfg {
+		rcdState.Landing = cfg
+		changed = true
+		snapshot = rcdState
+	}
+	rcdState.mutex.Unlock()
+
+	if changed && statusUpdate != nil {
+		statusUpdate.SendJSON(snapshot)
+	}
+}
+
+func applyFlapModeConfig(cfg FlapModeConfig) {
+	changed := false
+	var snapshot RcdState
+
+	rcdState.mutex.Lock()
+	if rcdState.FlapsMode != cfg {
+		rcdState.FlapsMode = cfg
+		changed = true
+		snapshot = rcdState
+	}
+	rcdState.mutex.Unlock()
+
+	if changed && statusUpdate != nil {
+		statusUpdate.SendJSON(snapshot)
+	}
 }
 
 func rcdTelemetryHandler(f can.Frame) {
@@ -768,6 +1027,7 @@ func main() {
 	}()
 
 	scheduleLabelRequests()
+	scheduleConfigRequests()
 
 	log.Printf("Connecting to CAN and publishing…")
 	bus.ConnectAndPublish()
