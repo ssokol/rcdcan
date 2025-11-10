@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -174,6 +175,25 @@ var labelReceipt = struct {
 	received: make(map[uint8]bool),
 }
 
+type configRequest struct {
+	element    uint8
+	instance   uint8
+	desc       string
+	responseCh chan struct{}
+}
+
+var (
+	configReqQueue      = make(chan *configRequest, 32)
+	configReqMu         sync.Mutex
+	configReqInFlight   *configRequest
+	configRequestWorker sync.Once
+)
+
+const (
+	configRequestTimeout     = 200 * time.Millisecond
+	configRequestMaxAttempts = 3
+)
+
 func decodeLabel(chunks [2][6]byte) string {
 	var combined [12]byte
 
@@ -209,6 +229,126 @@ func decodeFixedString(buf []byte) string {
 	}
 
 	return string(buf[:end])
+}
+
+func describeConfigRequest(req *configRequest) string {
+	if req.desc != "" {
+		return req.desc
+	}
+
+	return fmt.Sprintf("config element 0x%02X (instance %d)", req.element, req.instance)
+}
+
+func enqueueConfigRequest(element, instance uint8, desc string) {
+	if canbus == nil {
+		return
+	}
+
+	req := &configRequest{
+		element:  element,
+		instance: instance,
+		desc:     desc,
+	}
+
+	configReqQueue <- req
+}
+
+func startConfigRequestWorker() {
+	configRequestWorker.Do(func() {
+		go func() {
+			for req := range configReqQueue {
+				desc := describeConfigRequest(req)
+				success := false
+
+				for attempt := 1; attempt <= configRequestMaxAttempts && !success; attempt++ {
+					req.responseCh = make(chan struct{}, 1)
+
+					configReqMu.Lock()
+					configReqInFlight = req
+					configReqMu.Unlock()
+
+					log.Printf("Sending %s request (attempt %d)", desc, attempt)
+
+					if err := sendConfigGetFrame(req.element, req.instance); err != nil {
+						log.Printf("failed to send %s request: %v", desc, err)
+
+						configReqMu.Lock()
+						if configReqInFlight == req {
+							configReqInFlight = nil
+						}
+						configReqMu.Unlock()
+
+						time.Sleep(100 * time.Millisecond)
+						continue
+					}
+
+					select {
+					case <-req.responseCh:
+						success = true
+					case <-time.After(configRequestTimeout):
+						log.Printf("%s request timed out (attempt %d)", desc, attempt)
+					}
+
+					configReqMu.Lock()
+					if configReqInFlight == req {
+						configReqInFlight = nil
+					}
+					configReqMu.Unlock()
+
+					if !success && attempt < configRequestMaxAttempts {
+						time.Sleep(75 * time.Millisecond)
+					}
+				}
+
+				if !success {
+					log.Printf("giving up on %s request after %d attempts", desc, configRequestMaxAttempts)
+				}
+
+				time.Sleep(30 * time.Millisecond)
+			}
+		}()
+	})
+}
+
+func sendConfigGetFrame(element, instance uint8) error {
+	if canbus == nil {
+		return fmt.Errorf("CAN bus not initialized")
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		uint32(instance),
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = element
+
+	return canbus.Publish(frame)
+}
+
+func markConfigRequestComplete(element, instance uint8) {
+	var ch chan struct{}
+
+	configReqMu.Lock()
+	if req := configReqInFlight; req != nil && req.element == element && req.instance == instance {
+		ch = req.responseCh
+		configReqInFlight = nil
+	}
+	configReqMu.Unlock()
+
+	if ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // -------------------- CAN helpers --------------------
@@ -376,103 +516,21 @@ func scheduleLabelRequests() {
 }
 
 func requestTrimFlapAxisConfig(instance uint8) {
-	if canbus == nil {
-		return
-	}
-
-	frameID := makeCanID(
-		priorityControl,
-		classActuation,
-		functionConfigGet,
-		sourceTestNode,
-		uint32(instance),
-	)
-
-	frame := can.Frame{
-		ID:     frameID,
-		Length: 1,
-	}
-
-	frame.Data[0] = configDataElementTrimFlapAxis
-
-	if err := canbus.Publish(frame); err != nil {
-		log.Printf("failed to request trim/flap axis config (instance %d): %v", instance, err)
-	}
+	desc := fmt.Sprintf("trim/flap axis config (instance %d)", instance)
+	enqueueConfigRequest(configDataElementTrimFlapAxis, instance, desc)
 }
 
 func requestLandingLightConfig() {
-	if canbus == nil {
-		return
-	}
-
-	frameID := makeCanID(
-		priorityControl,
-		classActuation,
-		functionConfigGet,
-		sourceTestNode,
-		0,
-	)
-
-	frame := can.Frame{
-		ID:     frameID,
-		Length: 1,
-	}
-
-	frame.Data[0] = configDataElementLandingLight
-
-	if err := canbus.Publish(frame); err != nil {
-		log.Printf("failed to request landing light config: %v", err)
-	}
+	enqueueConfigRequest(configDataElementLandingLight, 0, "landing light config")
 }
 
 func requestFlapModeConfig() {
-	if canbus == nil {
-		return
-	}
-
-	frameID := makeCanID(
-		priorityControl,
-		classActuation,
-		functionConfigGet,
-		sourceTestNode,
-		0,
-	)
-
-	frame := can.Frame{
-		ID:     frameID,
-		Length: 1,
-	}
-
-	frame.Data[0] = configDataElementFlapMode
-
-	if err := canbus.Publish(frame); err != nil {
-		log.Printf("failed to request flap mode config: %v", err)
-	}
+	enqueueConfigRequest(configDataElementFlapMode, 0, "flap mode config")
 }
 
 func requestRelayConfig(instance uint8) {
-	if canbus == nil {
-		return
-	}
-
-	frameID := makeCanID(
-		priorityControl,
-		classActuation,
-		functionConfigGet,
-		sourceTestNode,
-		uint32(instance),
-	)
-
-	frame := can.Frame{
-		ID:     frameID,
-		Length: 1,
-	}
-
-	frame.Data[0] = configDataElementRelay
-
-	if err := canbus.Publish(frame); err != nil {
-		log.Printf("failed to request relay config (instance %d): %v", instance, err)
-	}
+	desc := fmt.Sprintf("relay config (instance %d)", instance)
+	enqueueConfigRequest(configDataElementRelay, instance, desc)
 }
 
 func scheduleConfigRequests() {
@@ -481,17 +539,13 @@ func scheduleConfigRequests() {
 
 		for _, inst := range []uint8{0, 1, 2, 3} {
 			requestTrimFlapAxisConfig(inst)
-			time.Sleep(50 * time.Millisecond)
 		}
 
 		requestLandingLightConfig()
-		time.Sleep(50 * time.Millisecond)
 		requestFlapModeConfig()
-		time.Sleep(50 * time.Millisecond)
 
 		for inst := uint8(0); inst < 8; inst++ {
 			requestRelayConfig(inst)
-			time.Sleep(50 * time.Millisecond)
 		}
 	}()
 }
@@ -761,6 +815,7 @@ func rcdConfigReplyHandler(f can.Frame) {
 		}
 
 		applyTrimFlapAxisConfig(instance, cfg)
+		markConfigRequestComplete(configDataElementTrimFlapAxis, instance)
 	case configDataElementLandingLight:
 		if len(payload) < 7 {
 			return
@@ -776,6 +831,7 @@ func rcdConfigReplyHandler(f can.Frame) {
 		}
 
 		applyLandingLightConfig(cfg)
+		markConfigRequestComplete(configDataElementLandingLight, instance)
 	case configDataElementFlapMode:
 		if len(payload) < 5 {
 			return
@@ -791,6 +847,7 @@ func rcdConfigReplyHandler(f can.Frame) {
 		}
 
 		applyFlapModeConfig(cfg)
+		markConfigRequestComplete(configDataElementFlapMode, instance)
 	case configDataElementRelay:
 		if len(payload) < 7 {
 			return
@@ -806,6 +863,7 @@ func rcdConfigReplyHandler(f can.Frame) {
 		}
 
 		applyRelayConfig(instance, cfg)
+		markConfigRequestComplete(configDataElementRelay, instance)
 	}
 }
 
@@ -1091,6 +1149,8 @@ func main() {
 	defer bus.Disconnect()
 
 	canbus = bus
+
+	startConfigRequestWorker()
 
 	// Subscribe for RCD telemetry and config replies
 	bus.SubscribeFunc(rcdTelemetryHandler)
