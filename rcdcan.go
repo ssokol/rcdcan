@@ -792,7 +792,7 @@ func rcdConfigReplyHandler(f can.Frame) {
 
 		applyFlapModeConfig(cfg)
 	case configDataElementRelay:
-		if len(payload) < 17 {
+		if len(payload) < 7 {
 			return
 		}
 
@@ -803,7 +803,6 @@ func rcdConfigReplyHandler(f can.Frame) {
 			DefaultState:  payload[4],
 			OnTimeTenths:  payload[5],
 			OffTimeTenths: payload[6],
-			Label:         decodeFixedString(payload[7:15]),
 		}
 
 		applyRelayConfig(instance, cfg)
@@ -897,6 +896,9 @@ func applyRelayConfig(instance uint8, cfg RelayConfig) {
 
 	rcdState.mutex.Lock()
 	prev := rcdState.RelayConfig[instance]
+	if cfg.Label == "" {
+		cfg.Label = prev.Label
+	}
 	if prev != cfg {
 		rcdState.RelayConfig[instance] = cfg
 		rcdState.RelayLabels[instance] = cfg.Label
