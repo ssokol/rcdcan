@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang='en'>
+    <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>Falken RCD Configuration</title>
+        <style>
+            body {
+                font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+                margin: 0;
+                padding: 0 12px 40px 12px;
+                background: #0b0d12;
+                color: #e6e9ef
+            }
+
+            h1 {
+                font-size: 20px;
+                margin: 16px 0
+            }
+
+            h2 {
+                font-size: 16px;
+                margin: 18px 0 8px 0;
+                padding-top: 8px;
+                border-top: 1px solid #2a2f3a
+            }
+
+            .card {
+                background: #131722;
+                border: 1px solid #2a2f3a;
+                border-radius: 10px;
+                padding: 12px;
+                margin: 12px 0
+            }
+
+            .row {
+                display: grid;
+                grid-template-columns: 150px 1fr;
+                gap: 10px;
+                align-items: center;
+                margin: 6px 0
+            }
+
+            select,input {
+                width: 100%;
+                padding: 6px 8px;
+                border-radius: 8px;
+                border: 1px solid #2a2f3a;
+                background: #0f1320;
+                color: #e6e9ef
+            }
+
+            select:disabled,input:disabled {
+                opacity: .55
+            }
+
+            label {
+                opacity: .9
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 8px
+            }
+
+            th,td {
+                border-bottom: 1px solid #2a2f3a;
+                padding: 8px;
+                text-align: left;
+                font-size: 14px
+            }
+
+            .muted {
+                opacity: .75;
+                font-size: 12px
+            }
+
+            .btnbar {
+                position: sticky;
+                bottom: 0;
+                background: rgba(11,13,18,.9);
+                backdrop-filter: blur(6px);
+                padding: 10px;
+                border-top: 1px solid #2a2f3a;
+                display: flex;
+                gap: 8px
+            }
+
+            .btn {
+                padding: 8px 12px;
+                border-radius: 10px;
+                border: 1px solid #2a2f3a;
+                background: #0f1320;
+                color: #e6e9ef;
+                cursor: pointer
+            }
+
+            .btn.primary {
+                background: #1f6feb;
+                border-color: #1f6feb
+            }
+
+            .btn.warn {
+                background: #8a2424;
+                border-color: #c33
+            }
+
+            .pill {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 999px;
+                border: 1px solid #2a2f3a;
+                font-size: 12px;
+                margin-left: 6px
+            }
+
+            .dep {
+                background: #40211f;
+                border-color: #7a3b37
+            }
+
+            .ok {
+                background: #1f3c28;
+                border-color: #396a4a
+            }
+
+            .err {
+                background: #4a1f1f;
+                border-color: #954444
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Falken Relay Control Device (RCD)</h1>
+        <div class='muted'>
+            Assign relays and inputs for control axes and landing lights. Relays assigned here are marked <b>ASSIGNED</b>
+            and disabled in the Relays section.
+        </div>
+        <div id='status' class='card muted'>Loading configuration…</div>
+        
+        <div class='card'>
+            <h2>Inputs (8)</h2>
+          <div class='muted'>
+              Inputs interface with physical buttons and switches and are used to control relays
+              and RCD functions. You may assign a descriptive name for each input in the `Label` column.
+          </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Label</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>
+                            <input id='inp_label_1' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>
+                            <input id='inp_label_2' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>
+                            <input id='inp_label_3' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>
+                            <input id='inp_label_4' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>
+                            <input id='inp_label_5' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>
+                            <input id='inp_label_6' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>
+                            <input id='inp_label_7' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>
+                            <input id='inp_label_8' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class='card'>
+            <h2>Relays (8)</h2>
+            <div class='muted'>
+                Relays are the electrically controlled switches that drive various aircraft functions 
+                (lights, motors, pumps). They can operate independently or be assigned to one of the 
+                functions of the RCD (flaps, trim, landing light, starter). You may assign a 
+                descriptive name for each relay in the `Label` column.
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Label</th>
+                        <th>Function</th>
+                        <th>Input</th>
+                        <th>Mode</th>
+                        <th>Boot State</th>
+                        <th>On 1/10s</th>
+                        <th>Off 1/10s</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id='rel_row_1'>
+                        <td>
+                            1 <span id='rel_dep_1' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_1' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_1'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_1'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_1'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_1'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_1' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_1' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_2'>
+                        <td>
+                            2 <span id='rel_dep_2' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_2' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_2'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_2'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_2'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_2'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_2' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_2' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_3'>
+                        <td>
+                            3 <span id='rel_dep_3' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_3' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_3'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_3'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_3'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_3'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_3' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_3' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_4'>
+                        <td>
+                            4 <span id='rel_dep_4' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_4' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_4'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_4'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_4'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_4'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_4' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_4' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_5'>
+                        <td>
+                            5 <span id='rel_dep_5' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_5' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_5'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_5'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_5'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_5'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_5' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_5' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_6'>
+                        <td>
+                            6 <span id='rel_dep_6' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_6' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_6'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_6'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_6'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_6'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_6' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_6' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_7'>
+                        <td>
+                            7 <span id='rel_dep_7' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_7' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_7'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_7'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_7'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_7'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_7' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_7' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                    <tr id='rel_row_8'>
+                        <td>
+                            8 <span id='rel_dep_8' class='pill dep' style='display:none'>ASSIGNED</span>
+                        </td>
+                        <td>
+                            <input id='rel_label_8' type='text' maxlength='8' placeholder='Label'>
+                        </td>
+                        <td>
+                            <select id='rel_fn_8'>
+                                <option value='0'>Independent</option>
+                                <option value='1'>ASSIGNED</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_in_8'></select>
+                        </td>
+                        <td>
+                            <select id='rel_mode_8'>
+                                <option value='0'>Basic</option>
+                                <option value='1'>Strobe</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select id='rel_state_8'>
+                                <option value='0'>Off</option>
+                                <option value='1'>On</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input id='rel_on_8' type='number' min='0' step='1'>
+                        </td>
+                        <td>
+                            <input id='rel_off_8' type='number' min='0' step='1'>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>        
+        
+        <div class='card'>
+            <h2>Flaps</h2>
+            <div class='muted'>
+                To control a flap actuator, assign two relays, one for the deploy direction
+                and one for the retract direction. See the system documentation for the
+                proper wiring. To control the flaps with physical buttons or switches, assign
+                inputs to the `Input+` and `Input-` fields.
+            </div>
+
+            <div class='row'>
+                <label>Relay+</label>
+                <select id='flaps_relay_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Relay-</label>
+                <select id='flaps_relay_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Input+</label>
+                <select id='flaps_in_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Input-</label>
+                <select id='flaps_in_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Deadtime (ms)</label>
+                <input id='flaps_dead' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Debounce (ms)</label>
+                <input id='flaps_deb' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Max Run (ms, 0=off)</label>
+                <input id='flaps_max' type='number' min='0' step='1'>
+            </div>
+            <h2>Flaps Mode</h2>
+            <div class='row'>
+                <label>Mode</label>
+                <select id='flaps_mode'>
+                    <option value='0'>Basic</option>
+                    <option value='1'>Stepped</option>
+                </select>
+            </div>
+            <div class='row'>
+                <label>Step 1 (ms)</label>
+                <input id='flaps_s1' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Step 2 (ms)</label>
+                <input id='flaps_s2' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Step 3 (ms)</label>
+                <input id='flaps_s3' type='number' min='0' step='1'>
+            </div>
+        </div>
+        
+        <div class='card'>
+            <h2>Elevator Trim</h2>
+            <div class='muted'>
+                To control an elevator trim servo, assign two relays, one for the nose up direction
+                and one for the nose down direction. See the system documentation for the
+                proper wiring. To control the trim servo with physical buttons, assign
+                inputs to the `Input+` and `Input-` fields.
+            </div>
+            <div class='row'>
+                <label>Relay+</label>
+                <select id='elev_relay_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Relay-</label>
+                <select id='elev_relay_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Input+</label>
+                <select id='elev_in_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Input-</label>
+                <select id='elev_in_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Deadtime (ms)</label>
+                <input id='elev_dead' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Debounce (ms)</label>
+                <input id='elev_deb' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Max Run (ms, 0=off)</label>
+                <input id='elev_max' type='number' min='0' step='1'>
+            </div>
+        </div>
+        
+        <div class='card'>
+            <h2>Aileron Trim</h2>
+            <div class='muted'>
+                To control an aileron trim servo, assign two relays, one for the roll right
+                direction (Relay+) and one for the roll left direction (Relay-). See the 
+                system documentation for the proper wiring. To control the trim servo 
+                with physical buttons, assign inputs to the `Input+` and `Input-` fields.
+            </div>
+            <div class='row'>
+                <label>Relay+</label>
+                <select id='ail_relay_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Relay-</label>
+                <select id='ail_relay_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Input+</label>
+                <select id='ail_in_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Input-</label>
+                <select id='ail_in_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Deadtime (ms)</label>
+                <input id='ail_dead' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Debounce (ms)</label>
+                <input id='ail_deb' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Max Run (ms, 0=off)</label>
+                <input id='ail_max' type='number' min='0' step='1'>
+            </div>
+        </div>
+        
+        <div class='card'>
+            <h2>Rudder Trim</h2>
+            <div class='muted'>
+                To control an rudder trim servo, assign two relays, one for the yaw right
+                direction (Relay+) and one for the yaw left direction (Relay-). See the 
+                system documentation for the proper wiring. To control the trim servo 
+                with physical buttons, assign inputs to the `Input+` and `Input-` fields.
+            </div>
+            <div class='row'>
+                <label>Relay+</label>
+                <select id='rud_relay_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Relay-</label>
+                <select id='rud_relay_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Input+</label>
+                <select id='rud_in_pos'></select>
+            </div>
+            <div class='row'>
+                <label>Input-</label>
+                <select id='rud_in_neg'></select>
+            </div>
+            <div class='row'>
+                <label>Deadtime (ms)</label>
+                <input id='rud_dead' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Debounce (ms)</label>
+                <input id='rud_deb' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Max Run (ms, 0=off)</label>
+                <input id='rud_max' type='number' min='0' step='1'>
+            </div>
+        </div>
+        
+        <div class='card'>
+            <h2>Landing Light</h2>
+            <div class='muted'>
+                To control landing lights, assign one to Relay A and optionally another to
+                Relay B. To use a physical switch to control on / off state, assign an
+                input to the 'Enable Input' field. To manually control wig/wag state, assign
+                another input to the 'Wig/Wag Input' field.
+            </div>
+            <div class='row'>
+                <label>Relay A</label>
+                <select id='land_relay_a'></select>
+            </div>
+            <div class='row'>
+                <label>Relay B</label>
+                <select id='land_relay_b'></select>
+            </div>
+            <div class='row'>
+                <label>Enable Input</label>
+                <select id='land_in_on'></select>
+            </div>
+            <div class='row'>
+                <label>Wig/Wag Input</label>
+                <select id='land_in_wig'></select>
+            </div>
+            <div class='row'>
+                <label>Cadence (tenths)</label>
+                <input id='land_cad' type='number' min='0' step='1'>
+            </div>
+            <div class='row'>
+                <label>Deadtime (ms)</label>
+                <input id='land_dead' type='number' min='0' step='1'>
+            </div>
+        </div>
+
+        <div class='btnbar'>
+            <button id='btnSave' class='btn primary'>Save Configuration</button>
+            <button id='btnFactory' class='btn warn'>Factory Default (not saved)</button>
+        </div>
+        <script>
+            (function() {
+                'use strict';
+                var NONE = 255;
+                var UI_MIN = 1;
+                var UI_MAX = 8;
+                var cfg = null;
+                var serial = 0;
+                var CONFIG_ENDPOINT = '/api/config';
+                function el(id) {
+                    return document.getElementById(id);
+                }
+                function opt(v, t) {
+                    var o = document.createElement('option');
+                    o.value = String(v);
+                    o.textContent = t;
+                    return o;
+                }
+                function getRelayLabel(idx) {
+                    if (!cfg || !cfg.relay || !cfg.relay[idx]) {
+                        return '';
+                    }
+                    var s = cfg.relay[idx].label;
+                    if (typeof s !== 'string') {
+                        return '';
+                    }
+                    return s;
+                }
+                function relayOptionText(idx) {
+                    var n = idx + 1;
+                    var label = getRelayLabel(idx).trim();
+                    if (label.length > 0) {
+                        return n + ' - ' + label;
+                    }
+                    return String(n);
+                }
+                function getInputLabel(idx) {
+                    if (!cfg || !cfg.input || !cfg.input[idx]) {
+                        return '';
+                    }
+                    var s = cfg.input[idx].label;
+                    if (typeof s !== 'string') {
+                        return '';
+                    }
+                    return s;
+                }
+                function inputOptionText(idx) {
+                    var n = idx + 1;
+                    var label = getInputLabel(idx).trim();
+                    if (label.length > 0) {
+                        return n + ' - ' + label;
+                    }
+                    return String(n);
+                }
+                function labelIndex(v) {
+                    return (v === NONE) ? 'None' : String(v + 1);
+                }
+                function fillSelect(sel, values, current) {
+                    while (sel.firstChild) {
+                        sel.removeChild(sel.firstChild);
+                    }
+                    sel.appendChild(opt(NONE, labelIndex(NONE)));
+                    for (var i = 0; i < values.length; i++) {
+                        var v = values[i];
+                        sel.appendChild(opt(v, labelIndex(v)));
+                    }
+                    sel.value = (values.indexOf(current) >= 0 ? String(current) : String(NONE));
+                }
+                function setData(sel, val) {
+                    sel.setAttribute('data-cur', String(val));
+                    sel.value = String(val);
+                }
+                function fillInputs2(sel, usedSet, current) {
+                    var free = [];
+                    for (var i = 0; i < 8; i++) {
+                        if (!usedSet.has(i))
+                            free.push(i);
+                    }
+                    fillSelect(sel, free, current);
+                }
+                function fillInputs(sel, usedSet, current) {
+                    var free = [];
+                    for (var i = 0; i < 8; i++) {
+                        if (!usedSet.has(i)) {
+                            free.push(i);
+                        }
+                    }
+                    while (sel.firstChild) {
+                        sel.removeChild(sel.firstChild);
+                    }
+                    sel.appendChild(opt(NONE, 'None'));
+                    for (var k = 0; k < free.length; k++) {
+                        var v = free[k];
+                        var o = document.createElement('option');
+                        o.value = String(v);
+                        o.textContent = inputOptionText(v);
+                        sel.appendChild(o);
+                    }
+                    sel.value = (free.indexOf(current) >= 0 ? String(current) : String(NONE));
+                }
+                function currentOnce(sel, fallback) {
+                    var a = sel.getAttribute('data-cur');
+                    if (a !== null) {
+                        sel.removeAttribute('data-cur');
+                        var n = parseInt(a);
+                        return isNaN(n) ? fallback : n;
+                    }
+                    return fallback;
+                }
+                function fillRelays(sel, usedSet, current) {
+                    var free = [];
+                    for (var i = 0; i < 8; i++) {
+                        if (!usedSet.has(i)) {
+                            free.push(i);
+                        }
+                    }
+                    while (sel.firstChild) {
+                        sel.removeChild(sel.firstChild);
+                    }
+                    sel.appendChild(opt(NONE, 'None'));
+                    for (var k = 0; k < free.length; k++) {
+                        var v = free[k];
+                        var o = document.createElement('option');
+                        o.value = String(v);
+                        o.textContent = relayOptionText(v);
+                        sel.appendChild(o);
+                    }
+                    sel.value = (free.indexOf(current) >= 0 ? String(current) : String(NONE));
+                }
+                function cloneMinus(setIn, value) {
+                    var out = new Set(setIn);
+                    if (!isNaN(value) && value !== NONE) {
+                        out.delete(value);
+                    }
+                    return out;
+                }
+                function safeParseInt(v, dflt) {
+                    var n = parseInt(v);
+                    return isNaN(n) ? dflt : n;
+                }
+                function computeUsed() {
+                    var usedRelays = new Set();
+                    var usedInputs = new Set();
+                    ['flaps', 'elev', 'ail', 'rud'].forEach(function(ax) {
+                        var rp = parseInt(el(ax + '_relay_pos').value);
+                        var rn = parseInt(el(ax + '_relay_neg').value);
+                        if (rp !== NONE)
+                            usedRelays.add(rp);
+                        if (rn !== NONE)
+                            usedRelays.add(rn);
+                        var ip = parseInt(el(ax + '_in_pos').value);
+                        var ineg = parseInt(el(ax + '_in_neg').value);
+                        if (ip !== NONE)
+                            usedInputs.add(ip);
+                        if (ineg !== NONE)
+                            usedInputs.add(ineg);
+                    });
+                    var la = parseInt(el('land_relay_a').value);
+                    var lb = parseInt(el('land_relay_b').value);
+                    if (la !== NONE)
+                        usedRelays.add(la);
+                    if (lb !== NONE)
+                        usedRelays.add(lb);
+                    var lin = parseInt(el('land_in_on').value);
+                    var lw = parseInt(el('land_in_wig').value);
+                    if (lin !== NONE)
+                        usedInputs.add(lin);
+                    if (lw !== NONE)
+                        usedInputs.add(lw);
+                    for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                        var fn = parseInt(el('rel_fn_' + ui).value);
+                        var ri = parseInt(el('rel_in_' + ui).value);
+                        if (fn === 0 && ri !== NONE)
+                            usedInputs.add(ri);
+                    }
+                    return {
+                        usedRelays: usedRelays,
+                        usedInputs: usedInputs
+                    };
+                }
+                function refreshAvailability() {
+                    var used = computeUsed();
+                    ['flaps', 'elev', 'ail', 'rud'].forEach(function(ax) {
+                        var rp = currentOnce(el(ax + '_relay_pos'), safeParseInt(el(ax + '_relay_pos').value, NONE));
+                        var rn = currentOnce(el(ax + '_relay_neg'), safeParseInt(el(ax + '_relay_neg').value, NONE));
+                        var ip = currentOnce(el(ax + '_in_pos'), safeParseInt(el(ax + '_in_pos').value, NONE));
+                        var ineg = currentOnce(el(ax + '_in_neg'), safeParseInt(el(ax + '_in_neg').value, NONE));
+                        fillRelays(el(ax + '_relay_pos'), cloneMinus(used.usedRelays, rp), rp);
+                        fillRelays(el(ax + '_relay_neg'), cloneMinus(used.usedRelays, rn), rn);
+                        fillInputs(el(ax + '_in_pos'), cloneMinus(used.usedInputs, ip), ip);
+                        fillInputs(el(ax + '_in_neg'), cloneMinus(used.usedInputs, ineg), ineg);
+                    });
+                    var la = currentOnce(el('land_relay_a'), safeParseInt(el('land_relay_a').value, NONE));
+                    var lb = currentOnce(el('land_relay_b'), safeParseInt(el('land_relay_b').value, NONE));
+                    var lin = currentOnce(el('land_in_on'), safeParseInt(el('land_in_on').value, NONE));
+                    var lw = currentOnce(el('land_in_wig'), safeParseInt(el('land_in_wig').value, NONE));
+                    fillRelays(el('land_relay_a'), cloneMinus(used.usedRelays, la), la);
+                    fillRelays(el('land_relay_b'), cloneMinus(used.usedRelays, lb), lb);
+                    fillInputs(el('land_in_on'), cloneMinus(used.usedInputs, lin), lin);
+                    fillInputs(el('land_in_wig'), cloneMinus(used.usedInputs, lw), lw);
+                    var depUi = new Set();
+                    used.usedRelays.forEach(function(r) {
+                        depUi.add(r + 1);
+                    });
+                    for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                        var rowFn = el('rel_fn_' + ui);
+                        var rowIn = el('rel_in_' + ui);
+                        var rowMode = el('rel_mode_' + ui);
+                        var rowState = el('rel_state_' + ui);
+                        var rowOn = el('rel_on_' + ui);
+                        var rowOff = el('rel_off_' + ui);
+                        var badge = el('rel_dep_' + ui);
+                        if (depUi.has(ui)) {
+                            rowFn.value = '1';
+                            rowFn.disabled = true;
+                            rowIn.value = String(NONE);
+                            rowIn.disabled = true;
+                            rowMode.disabled = true;
+                            rowState.disabled = true;
+                            rowOn.disabled = true;
+                            rowOff.disabled = true;
+                            badge.style.display = 'inline-block';
+                        } else {
+                            var isDep = parseInt(rowFn.value) === 1;
+                            rowFn.disabled = isDep;
+                            rowIn.disabled = isDep;
+                            rowMode.disabled = isDep;
+                            rowState.disabled = isDep;
+                            rowOn.disabled = isDep;
+                            rowOff.disabled = isDep;
+                            badge.style.display = isDep ? 'inline-block' : 'none';
+                        }
+                    }
+                    for (var ui2 = UI_MIN; ui2 <= UI_MAX; ui2++) {
+                        var rf = safeParseInt(el('rel_fn_' + ui2).value, 0);
+                        var sel = el('rel_in_' + ui2);
+                        var cur = currentOnce(sel, safeParseInt(sel.value, NONE));
+                        if (rf === 0) {
+                            fillInputs(sel, cloneMinus(used.usedInputs, cur), cur);
+                        } else {
+                            fillInputs(sel, new Set(), NONE);
+                            sel.value = String(NONE);
+                        }
+                    }
+                }
+                function bindChangeRecalc() {
+                    var ids = ['flaps_relay_pos', 'flaps_relay_neg', 'flaps_in_pos', 'flaps_in_neg', 'elev_relay_pos', 'elev_relay_neg', 'elev_in_pos', 'elev_in_neg', 'ail_relay_pos', 'ail_relay_neg', 'ail_in_pos', 'ail_in_neg', 'rud_relay_pos', 'rud_relay_neg', 'rud_in_pos', 'rud_in_neg', 'land_relay_a', 'land_relay_b', 'land_in_on', 'land_in_wig'];
+                    for (var k = 0; k < ids.length; k++) {
+                        var e = el(ids[k]);
+                        if (e) {
+                            e.addEventListener('change', refreshAvailability);
+                        }
+                    }
+                    for (var i = 1; i < 9; i++) {
+                        el('rel_fn_' + i).addEventListener('change', refreshAvailability);
+                        el('rel_in_' + i).addEventListener('change', refreshAvailability);
+                    }
+                    for (var i2 = 1; i2 <= 8; i2++) {
+                        var inp = el('rel_label_' + i2);
+                        if (!inp) {
+                            continue;
+                        }
+                        inp.addEventListener('input', function() {
+                            for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                                var idx = ui - 1;
+                                if (!cfg || !cfg.relay || !cfg.relay[idx]) {
+                                    continue;
+                                }
+                                cfg.relay[idx].label = el('rel_label_' + ui).value || '';
+                            }
+                            refreshAvailability();
+                        });
+                    }
+                    for (var i3 = 1; i3 <= 8; i3++) {
+                        var inp = el('inp_label_' + i3);
+                        if (!inp) {
+                            continue;
+                        }
+                        inp.addEventListener('input', function() {
+                            for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                                var idx = ui - 1;
+                                if (!cfg || !cfg.input || !cfg.input[idx]) {
+                                    continue;
+                                }
+                                cfg.input[idx].label = el('inp_label_' + ui).value || '';
+                            }
+                            refreshAvailability();
+                        });
+                    }
+                }
+                function safe(a, d) {
+                    return (typeof a === 'undefined' || a === null) ? d : a;
+                }
+                function safeArr(a, idx, d) {
+                    if (!a || !a.length || typeof a[idx] === 'undefined' || a[idx] === null)
+                        return d;
+                    return a[idx];
+                }
+                function populateFromCfg(c) {
+                    if (!c) {
+                        cfg = {
+                            relay: [],
+                            input: []
+                        };
+                    } else {
+                        try {
+                            cfg = JSON.parse(JSON.stringify(c));
+                        } catch (err) {
+                            cfg = c;
+                        }
+                    }
+                    serial = safe(c && c.serial, 0);
+                    function setAxis(prefix, a) {
+                        a = a || {};
+                        var rp = (typeof a.relay_pos !== 'undefined') ? a.relay_pos : NONE;
+                        var rn = (typeof a.relay_neg !== 'undefined') ? a.relay_neg : NONE;
+                        setData(el(prefix + '_relay_pos'), rp);
+                        setData(el(prefix + '_relay_neg'), rn);
+                        setData(el(prefix + '_in_pos'), (typeof a.in_pos === 'number' ? a.in_pos : NONE));
+                        setData(el(prefix + '_in_neg'), (typeof a.in_neg === 'number' ? a.in_neg : NONE));
+                        el(prefix + '_dead').value = String(a.dead_ms || 0);
+                        el(prefix + '_deb').value = String(a.deb_ms || 0);
+                        el(prefix + '_max').value = String(a.max_run || 0);
+                    }
+                    setAxis('flaps', c.flaps);
+                    var fm = c.flaps_mode || {};
+                    el('flaps_mode').value = String(fm.mode || 0);
+                    var steps = fm.step_ms || [0, 0, 0];
+                    el('flaps_s1').value = String(steps[0] || 0);
+                    el('flaps_s2').value = String(steps[1] || 0);
+                    el('flaps_s3').value = String(steps[2] || 0);
+                    setAxis('elev', c.trim_elev);
+                    setAxis('ail', c.trim_ail);
+                    setAxis('rud', c.trim_rud);
+                    var ld = c.landing || {};
+                    setData(el('land_relay_a'), (typeof ld.relay_a === 'number' ? ld.relay_a : NONE));
+                    setData(el('land_relay_b'), (typeof ld.relay_b === 'number' ? ld.relay_b : NONE));
+                    setData(el('land_in_on'), (typeof ld.input_on === 'number' ? ld.input_on : NONE));
+                    setData(el('land_in_wig'), (typeof ld.input_wigwag === 'number' ? ld.input_wigwag : NONE));
+                    el('land_cad').value = String(ld.cadence_tenths || 0);
+                    el('land_dead').value = String(ld.deadtime_ms || 0);
+                    for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                        var i = ui - 1;
+                        var r = (c.relay && c.relay[i]) ? c.relay[i] : {};
+                        el('rel_fn_' + ui).value = String(safe(r.function, 0));
+                        setData(el('rel_in_' + ui), (typeof r.input_index === 'number' ? r.input_index : NONE));
+                        el('rel_mode_' + ui).value = String(safe(r.default_mode, 0));
+                        el('rel_state_' + ui).value = String(safe(r.default_state, 0));
+                        el('rel_on_' + ui).value = String(safe(r.on_time_tenths, 0));
+                        el('rel_off_' + ui).value = String(safe(r.off_time_tenths, 0));
+                        el('rel_label_' + ui).value = String(safe(r.label, ''));
+                    }
+                    for (var ui2 = UI_MIN; ui2 <= UI_MAX; ui2++) {
+                        var i = ui2 - 1;
+                        var r = (c.input && c.input[i]) ? c.input[i] : {};
+                        el('inp_label_' + ui2).value = String(safe(r.label, ''));
+                    }
+                    refreshAvailability();
+                    bindChangeRecalc();
+                }
+                function toConfig() {
+                    var c = {};
+                    c.serial = serial;
+                    function getAxis(prefix) {
+                        return {
+                            relay_pos: parseInt(el(prefix + '_relay_pos').value),
+                            relay_neg: parseInt(el(prefix + '_relay_neg').value),
+                            in_pos: parseInt(el(prefix + '_in_pos').value),
+                            in_neg: parseInt(el(prefix + '_in_neg').value),
+                            dead_ms: parseInt(el(prefix + '_dead').value) || 0,
+                            deb_ms: parseInt(el(prefix + '_deb').value) || 0,
+                            max_run: parseInt(el(prefix + '_max').value) || 0
+                        };
+                    }
+                    c.flaps = getAxis('flaps');
+                    c.flaps_mode = {
+                        mode: parseInt(el('flaps_mode').value),
+                        step_ms: [parseInt(el('flaps_s1').value) || 0, parseInt(el('flaps_s2').value) || 0, parseInt(el('flaps_s3').value) || 0]
+                    };
+                    c.trim_elev = getAxis('elev');
+                    c.trim_ail = getAxis('ail');
+                    c.trim_rud = getAxis('rud');
+                    c.landing = {
+                        relay_a: parseInt(el('land_relay_a').value),
+                        relay_b: parseInt(el('land_relay_b').value),
+                        input_on: parseInt(el('land_in_on').value),
+                        input_wigwag: parseInt(el('land_in_wig').value),
+                        cadence_tenths: parseInt(el('land_cad').value) || 0,
+                        deadtime_ms: parseInt(el('land_dead').value) || 0
+                    };
+                    c.relay = [];
+                    for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                        var depBadgeVisible = (el('rel_dep_' + ui).style.display === 'inline-block');
+                        var fn = depBadgeVisible ? 1 : parseInt(el('rel_fn_' + ui).value);
+                        var label_text = (el('rel_label_' + ui).value || '').trim().slice(0, 8);
+                        var obj = {
+                            function: fn,
+                            input_index: (fn === 1 ? NONE : parseInt(el('rel_in_' + ui).value)),
+                            default_mode: parseInt(el('rel_mode_' + ui).value),
+                            default_state: parseInt(el('rel_state_' + ui).value),
+                            on_time_tenths: parseInt(el('rel_on_' + ui).value) || 0,
+                            off_time_tenths: parseInt(el('rel_off_' + ui).value) || 0,
+                            label: label_text
+                        };
+                        c.relay.push(obj);
+                    }
+                    c.input = [];
+                    for (var ui = UI_MIN; ui <= UI_MAX; ui++) {
+                        var label_text = (el('inp_label_' + ui).value || '').trim().slice(0, 8);
+                        var obj = {
+                            label: label_text
+                        };
+                        c.input.push(obj);
+                    }
+                    var used = computeUsed();
+                    used.usedRelays.forEach(function(rn) {
+                        c.relay[rn].function = 1;
+                        c.relay[rn].input_index = NONE;
+                    });
+                    return c;
+                }
+                function toDefaults() {
+                    var c = {};
+                    c.serial = serial;
+                    function axis() {
+                        return {
+                            relay_pos: NONE,
+                            relay_neg: NONE,
+                            in_pos: NONE,
+                            in_neg: NONE,
+                            dead_ms: 30,
+                            deb_ms: 20,
+                            max_run: 0
+                        };
+                    }
+                    c.flaps = axis();
+                    c.flaps_mode = {
+                        mode: 0,
+                        step_ms: [0, 0, 0]
+                    };
+                    c.trim_elev = axis();
+                    c.trim_ail = axis();
+                    c.trim_rud = axis();
+                    c.landing = {
+                        relay_a: NONE,
+                        relay_b: NONE,
+                        input_on: NONE,
+                        input_wigwag: NONE,
+                        cadence_tenths: 10,
+                        deadtime_ms: 30
+                    };
+                    c.relay = [];
+                    c.input = [];
+                    for (var i = 0; i < 8; i++) {
+                        c.relay.push({
+                            function: 0,
+                            input_index: NONE,
+                            default_mode: 0,
+                            default_state: 0,
+                            on_time_tenths: 5,
+                            off_time_tenths: 5,
+                            label: ''
+                        });
+                    }
+                    for (var i = 0; i < 8; i++) {
+                        c.input.push({
+                            label: ''
+                        });
+                    }
+                    return c;
+                }
+                function loadCfg() {
+                    fetch(CONFIG_ENDPOINT, {
+                        cache: 'no-store'
+                    }).then(function(res) {
+                        if (!res.ok)
+                            throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    }).then(function(j) {
+                        cfg = j;
+                        el('status').textContent = 'Loaded. Serial ' + (cfg && cfg.serial ? cfg.serial : 0);
+                        populateFromCfg(cfg);
+                    }).catch(function(e) {
+                        el('status').textContent = 'Failed to load config: ' + e.message;
+                    });
+                }
+                function saveCfg() {
+                    var out = toConfig();
+                    fetch(CONFIG_ENDPOINT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(out)
+                    }).then(function(res) {
+                        if (!res.ok)
+                            throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    }).then(function(j) {
+                        serial = j.serial || serial;
+                        el('status').innerHTML = 'Saved <span class="pill ok">OK</span> Serial ' + serial;
+                    }).catch(function(e) {
+                        el('status').innerHTML = 'Save failed <span class="pill err">ERR</span> ' + e.message;
+                    });
+                }
+                function factoryDefaults() {
+                    var d = toDefaults();
+                    populateFromCfg(d);
+                    el('status').textContent = 'Factory defaults loaded (not saved)';
+                }
+                document.addEventListener('DOMContentLoaded', function() {
+                    var b1 = el('btnSave');
+                    if (b1)
+                        b1.addEventListener('click', saveCfg);
+                    var b2 = el('btnFactory');
+                    if (b2)
+                        b2.addEventListener('click', factoryDefaults);
+                    loadCfg();
+                });
+            }
+            )();
+        </script>
+    </body>
+</html>

@@ -1,16 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"golang.org/x/net/websocket"
 	"log"
-	"time"
 	"net/http"
 	"strconv"
 	"strings"
-	"golang.org/x/net/websocket"
+	"time"
 )
 
-const uiHTMLPath = "web/index.html"
+const (
+	uiHTMLPath     = "web/index.html"
+	configHTMLPath = "web/config.html"
+)
 
 var statusUpdate *uibroadcaster
 
@@ -33,7 +37,7 @@ func handleStatusWS(conn *websocket.Conn) {
 func initiWebsockets(mux *http.ServeMux) {
 
 	log.Printf("Starting WebSocket Server\n")
-	
+
 	statusUpdate = NewUIBroadcaster()
 	statusUpdate.prefix = "STATUS"
 	mux.HandleFunc("/status",
@@ -42,7 +46,7 @@ func initiWebsockets(mux *http.ServeMux) {
 				Handler: websocket.Handler(handleStatusWS)}
 			s.ServeHTTP(w, req)
 		})
- }
+}
 
 func startWebServer(pm *pressManager, fm *flapPressManager, addr string) *http.Server {
 	mux := http.NewServeMux()
@@ -55,6 +59,51 @@ func startWebServer(pm *pressManager, fm *flapPressManager, addr string) *http.S
 		}
 
 		http.ServeFile(w, r, uiHTMLPath)
+	})
+
+	mux.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config" {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.ServeFile(w, r, configHTMLPath)
+	})
+
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			cfg := getConfigSnapshot()
+
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(cfg); err != nil {
+				log.Printf("failed to encode config snapshot: %v", err)
+			}
+		case http.MethodPost:
+			var payload ConfigPayload
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, fmt.Sprintf("invalid config payload: %v", err), http.StatusBadRequest)
+				return
+			}
+
+			serial, err := updateRcdConfig(payload)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to queue config update: %v", err), http.StatusServiceUnavailable)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			resp := struct {
+				Serial uint32 `json:"serial"`
+			}{Serial: serial}
+
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				log.Printf("failed to encode config update response: %v", err)
+			}
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
 
 	// Trim press/hold
@@ -229,8 +278,8 @@ func startWebServer(pm *pressManager, fm *flapPressManager, addr string) *http.S
 		Handler: mux,
 	}
 
-  // start the status socket
-  initiWebsockets(mux)
+	// start the status socket
+	initiWebsockets(mux)
 
 	go func() {
 		log.Printf("Web UI listening on %s", addr)
