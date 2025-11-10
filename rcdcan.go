@@ -61,6 +61,7 @@ const (
 	configDataElementLandingLight = 0x02
 	configDataElementFlapMode     = 0x03
 	configDataElementLabel        = 0x04
+	configDataElementRelay        = 0x05
 
 	sourceTestNode = 0x01
 )
@@ -110,6 +111,16 @@ type FlapModeConfig struct {
 	StepMs [3]uint16 `json:"step_ms"`
 }
 
+type RelayConfig struct {
+	Function      uint8  `json:"function"`
+	InputIndex    uint8  `json:"input_index"`
+	DefaultMode   uint8  `json:"default_mode"`
+	DefaultState  uint8  `json:"default_state"`
+	OnTimeTenths  uint8  `json:"on_time_tenths"`
+	OffTimeTenths uint8  `json:"off_time_tenths"`
+	Label         string `json:"label"`
+}
+
 type RcdState struct {
 	mutex sync.RWMutex
 
@@ -130,6 +141,8 @@ type RcdState struct {
 
 	RelayLabels [8]string
 	InputLabels [8]string
+
+	RelayConfig [8]RelayConfig `json:"relay"`
 
 	TrimElev TrimFlapAxisConfig `json:"trim_elev"`
 	TrimAil  TrimFlapAxisConfig `json:"trim_ail"`
@@ -180,6 +193,22 @@ func decodeLabel(chunks [2][6]byte) string {
 	}
 
 	return string(combined[:end])
+}
+
+func decodeFixedString(buf []byte) string {
+	end := len(buf)
+	for i, b := range buf {
+		if b == 0 {
+			end = i
+			break
+		}
+	}
+
+	if end < 0 {
+		end = 0
+	}
+
+	return string(buf[:end])
 }
 
 // -------------------- CAN helpers --------------------
@@ -421,6 +450,31 @@ func requestFlapModeConfig() {
 	}
 }
 
+func requestRelayConfig(instance uint8) {
+	if canbus == nil {
+		return
+	}
+
+	frameID := makeCanID(
+		priorityControl,
+		classActuation,
+		functionConfigGet,
+		sourceTestNode,
+		uint32(instance),
+	)
+
+	frame := can.Frame{
+		ID:     frameID,
+		Length: 1,
+	}
+
+	frame.Data[0] = configDataElementRelay
+
+	if err := canbus.Publish(frame); err != nil {
+		log.Printf("failed to request relay config (instance %d): %v", instance, err)
+	}
+}
+
 func scheduleConfigRequests() {
 	go func() {
 		time.Sleep(400 * time.Millisecond)
@@ -433,6 +487,12 @@ func scheduleConfigRequests() {
 		requestLandingLightConfig()
 		time.Sleep(50 * time.Millisecond)
 		requestFlapModeConfig()
+		time.Sleep(50 * time.Millisecond)
+
+		for inst := uint8(0); inst < 8; inst++ {
+			requestRelayConfig(inst)
+			time.Sleep(50 * time.Millisecond)
+		}
 	}()
 }
 
@@ -608,6 +668,7 @@ func applyLabelToState(instance uint8, label string) {
 			logChange = true
 		}
 		rcdState.RelayLabels[instance] = label
+		rcdState.RelayConfig[instance].Label = label
 		changed = true
 	default:
 		idx := instance - 8
@@ -730,6 +791,22 @@ func rcdConfigReplyHandler(f can.Frame) {
 		}
 
 		applyFlapModeConfig(cfg)
+	case configDataElementRelay:
+		if len(payload) < 17 {
+			return
+		}
+
+		cfg := RelayConfig{
+			Function:      payload[1],
+			InputIndex:    payload[2],
+			DefaultMode:   payload[3],
+			DefaultState:  payload[4],
+			OnTimeTenths:  payload[5],
+			OffTimeTenths: payload[6],
+			Label:         decodeFixedString(payload[7:15]),
+		}
+
+		applyRelayConfig(instance, cfg)
 	}
 }
 
@@ -800,6 +877,29 @@ func applyFlapModeConfig(cfg FlapModeConfig) {
 	rcdState.mutex.Lock()
 	if rcdState.FlapsMode != cfg {
 		rcdState.FlapsMode = cfg
+		changed = true
+		snapshot = rcdState
+	}
+	rcdState.mutex.Unlock()
+
+	if changed && statusUpdate != nil {
+		statusUpdate.SendJSON(snapshot)
+	}
+}
+
+func applyRelayConfig(instance uint8, cfg RelayConfig) {
+	if instance >= 8 {
+		return
+	}
+
+	changed := false
+	var snapshot RcdState
+
+	rcdState.mutex.Lock()
+	prev := rcdState.RelayConfig[instance]
+	if prev != cfg {
+		rcdState.RelayConfig[instance] = cfg
+		rcdState.RelayLabels[instance] = cfg.Label
 		changed = true
 		snapshot = rcdState
 	}
