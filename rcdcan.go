@@ -45,8 +45,9 @@ const INSTANCE_FLAPS uint8 = 0
 var canbus *can.Bus
 
 const (
-	priorityControl = 0x02
-	classActuation  = 0x09
+	priorityControl     = 0x02
+	priorityMaintenance = 0x06
+	classActuation      = 0x09
 
 	functionTrimCmd      = 0x10
 	functionFlapCtrl     = 0x12
@@ -54,6 +55,7 @@ const (
 	functionRcdTelemStat = 0x52
 
 	functionConfigGet   = 0x60
+	functionConfigSet   = 0x61
 	functionConfigReply = 0x62
 
 	configInstanceAllLabels = 16
@@ -122,6 +124,22 @@ type RelayConfig struct {
 	Label         string `json:"label"`
 }
 
+type InputConfig struct {
+	Label string `json:"label"`
+}
+
+type ConfigPayload struct {
+	Serial    uint32             `json:"serial"`
+	Flaps     TrimFlapAxisConfig `json:"flaps"`
+	FlapsMode FlapModeConfig     `json:"flaps_mode"`
+	TrimElev  TrimFlapAxisConfig `json:"trim_elev"`
+	TrimAil   TrimFlapAxisConfig `json:"trim_ail"`
+	TrimRud   TrimFlapAxisConfig `json:"trim_rud"`
+	Landing   LandingLightConfig `json:"landing"`
+	Relay     []RelayConfig      `json:"relay"`
+	Input     []InputConfig      `json:"input"`
+}
+
 type RcdState struct {
 	mutex sync.RWMutex
 
@@ -187,6 +205,21 @@ var (
 	configReqMu         sync.Mutex
 	configReqInFlight   *configRequest
 	configRequestWorker sync.Once
+)
+
+type configUpdate struct {
+	desc   string
+	frames []can.Frame
+}
+
+var (
+	configUpdateQueue  = make(chan *configUpdate, 64)
+	configUpdateWorker sync.Once
+)
+
+var (
+	configSerial   uint32
+	configSerialMu sync.Mutex
 )
 
 const (
@@ -310,6 +343,38 @@ func startConfigRequestWorker() {
 	})
 }
 
+func startConfigUpdateWorker() {
+	configUpdateWorker.Do(func() {
+		go func() {
+			for upd := range configUpdateQueue {
+				desc := upd.desc
+				if desc == "" {
+					desc = "config update"
+				}
+
+				if canbus == nil {
+					log.Printf("skipping %s: CAN bus not initialized", desc)
+					time.Sleep(50 * time.Millisecond)
+					continue
+				}
+
+				log.Printf("Sending %s", desc)
+
+				for idx, frame := range upd.frames {
+					if err := canbus.Publish(frame); err != nil {
+						log.Printf("failed to publish %s frame %d/%d: %v", desc, idx+1, len(upd.frames), err)
+						break
+					}
+
+					time.Sleep(40 * time.Millisecond)
+				}
+
+				time.Sleep(60 * time.Millisecond)
+			}
+		}()
+	})
+}
+
 func sendConfigGetFrame(element, instance uint8) error {
 	if canbus == nil {
 		return fmt.Errorf("CAN bus not initialized")
@@ -331,6 +396,328 @@ func sendConfigGetFrame(element, instance uint8) error {
 	frame.Data[0] = element
 
 	return canbus.Publish(frame)
+}
+
+func enqueueConfigUpdate(desc string, frames ...can.Frame) {
+	if canbus == nil {
+		return
+	}
+
+	if len(frames) == 0 {
+		return
+	}
+
+	copies := make([]can.Frame, len(frames))
+	copy(copies, frames)
+
+	configUpdateQueue <- &configUpdate{desc: desc, frames: copies}
+}
+
+func currentConfigSerial() uint32 {
+	configSerialMu.Lock()
+	defer configSerialMu.Unlock()
+
+	return configSerial
+}
+
+func nextConfigSerial() uint32 {
+	configSerialMu.Lock()
+	defer configSerialMu.Unlock()
+
+	configSerial++
+	return configSerial
+}
+
+func getConfigSnapshot() ConfigPayload {
+	cfg := ConfigPayload{}
+
+	cfg.Serial = currentConfigSerial()
+
+	rcdState.mutex.RLock()
+
+	cfg.Flaps = rcdState.Flaps
+	cfg.FlapsMode = rcdState.FlapsMode
+	cfg.TrimElev = rcdState.TrimElev
+	cfg.TrimAil = rcdState.TrimAil
+	cfg.TrimRud = rcdState.TrimRud
+	cfg.Landing = rcdState.Landing
+
+	cfg.Relay = make([]RelayConfig, len(rcdState.RelayConfig))
+	copy(cfg.Relay, rcdState.RelayConfig[:])
+	for i := range cfg.Relay {
+		if cfg.Relay[i].Label == "" {
+			cfg.Relay[i].Label = rcdState.RelayLabels[i]
+		}
+	}
+
+	cfg.Input = make([]InputConfig, len(rcdState.InputLabels))
+	for i := range cfg.Input {
+		cfg.Input[i] = InputConfig{Label: rcdState.InputLabels[i]}
+	}
+
+	rcdState.mutex.RUnlock()
+
+	return cfg
+}
+
+func ensureRelaySlice(in []RelayConfig) []RelayConfig {
+	out := make([]RelayConfig, 8)
+	for i := 0; i < len(out); i++ {
+		if i < len(in) {
+			out[i] = in[i]
+		} else {
+			out[i] = RelayConfig{InputIndex: 0xFF}
+		}
+
+		if len(out[i].Label) > 12 {
+			out[i].Label = out[i].Label[:12]
+		}
+	}
+
+	return out
+}
+
+func ensureInputSlice(in []InputConfig) []InputConfig {
+	out := make([]InputConfig, 8)
+	for i := 0; i < len(out); i++ {
+		if i < len(in) {
+			out[i] = in[i]
+		}
+
+		if len(out[i].Label) > 12 {
+			out[i].Label = out[i].Label[:12]
+		}
+	}
+
+	return out
+}
+
+func updateRcdConfig(cfg ConfigPayload) (uint32, error) {
+	if canbus == nil {
+		return currentConfigSerial(), fmt.Errorf("CAN bus not initialized")
+	}
+
+	startConfigUpdateWorker()
+
+	relays := ensureRelaySlice(cfg.Relay)
+	inputs := ensureInputSlice(cfg.Input)
+
+	queueTrimAxisUpdate(0, cfg.TrimElev)
+	queueTrimAxisUpdate(1, cfg.TrimAil)
+	queueTrimAxisUpdate(2, cfg.TrimRud)
+	queueTrimAxisUpdate(3, cfg.Flaps)
+	queueLandingLightUpdate(cfg.Landing)
+	queueFlapModeUpdate(cfg.FlapsMode)
+
+	for idx, relayCfg := range relays {
+		queueRelayConfigUpdate(uint8(idx), relayCfg)
+	}
+
+	for idx, relayCfg := range relays {
+		queueLabelUpdate(uint8(idx), relayCfg.Label)
+	}
+
+	for idx, inputCfg := range inputs {
+		queueLabelUpdate(uint8(idx+8), inputCfg.Label)
+	}
+
+	applyTrimFlapAxisConfig(0, cfg.TrimElev)
+	applyTrimFlapAxisConfig(1, cfg.TrimAil)
+	applyTrimFlapAxisConfig(2, cfg.TrimRud)
+	applyTrimFlapAxisConfig(3, cfg.Flaps)
+	applyLandingLightConfig(cfg.Landing)
+	applyFlapModeConfig(cfg.FlapsMode)
+
+	for idx, relayCfg := range relays {
+		applyRelayConfig(uint8(idx), relayCfg)
+		applyLabelToState(uint8(idx), relayCfg.Label)
+	}
+
+	for idx, inputCfg := range inputs {
+		applyLabelToState(uint8(idx+8), inputCfg.Label)
+	}
+
+	serial := nextConfigSerial()
+
+	return serial, nil
+}
+
+func queueTrimAxisUpdate(instance uint8, cfg TrimFlapAxisConfig) {
+	frames := buildTrimFlapAxisFrames(instance, cfg)
+	if len(frames) == 0 {
+		return
+	}
+
+	desc := fmt.Sprintf("trim/flap axis config (instance %d)", instance)
+	enqueueConfigUpdate(desc, frames...)
+}
+
+func queueLandingLightUpdate(cfg LandingLightConfig) {
+	frames := buildLandingLightFrames(cfg)
+	if len(frames) == 0 {
+		return
+	}
+
+	enqueueConfigUpdate("landing light config", frames...)
+}
+
+func queueFlapModeUpdate(cfg FlapModeConfig) {
+	frames := buildFlapModeFrames(cfg)
+	if len(frames) == 0 {
+		return
+	}
+
+	enqueueConfigUpdate("flap mode config", frames...)
+}
+
+func queueRelayConfigUpdate(instance uint8, cfg RelayConfig) {
+	frames := buildRelayFrames(instance, cfg)
+	if len(frames) == 0 {
+		return
+	}
+
+	desc := fmt.Sprintf("relay config (instance %d)", instance)
+	enqueueConfigUpdate(desc, frames...)
+}
+
+func queueLabelUpdate(instance uint8, label string) {
+	frames := buildLabelFrames(instance, label)
+	if len(frames) == 0 {
+		return
+	}
+
+	desc := fmt.Sprintf("label update (instance %d)", instance)
+	enqueueConfigUpdate(desc, frames...)
+}
+
+func buildTrimFlapAxisFrames(instance uint8, cfg TrimFlapAxisConfig) []can.Frame {
+	payload := [8]byte{
+		configDataElementTrimFlapAxis,
+		cfg.RelayPos,
+		cfg.RelayNeg,
+		cfg.InputPos,
+		cfg.InputNeg,
+		encodeMsToTenths(cfg.DeadtimeMs),
+		encodeMsToTenths(cfg.DebounceMs),
+		encodeMsToHundreds(cfg.MaxRunMs),
+	}
+
+	frame := newConfigSetFrame(instance, payload[:])
+	return []can.Frame{frame}
+}
+
+func buildLandingLightFrames(cfg LandingLightConfig) []can.Frame {
+	payload := [7]byte{
+		configDataElementLandingLight,
+		cfg.RelayA,
+		cfg.RelayB,
+		cfg.InputOn,
+		cfg.InputWigwag,
+		cfg.CadenceTenths,
+		encodeMsToTenths(cfg.DeadtimeMs),
+	}
+
+	frame := newConfigSetFrame(0, payload[:])
+	return []can.Frame{frame}
+}
+
+func buildFlapModeFrames(cfg FlapModeConfig) []can.Frame {
+	payload := [5]byte{
+		configDataElementFlapMode,
+		cfg.Mode,
+		encodeMsToHundreds(uint32(cfg.StepMs[0])),
+		encodeMsToHundreds(uint32(cfg.StepMs[1])),
+		encodeMsToHundreds(uint32(cfg.StepMs[2])),
+	}
+
+	frame := newConfigSetFrame(0, payload[:])
+	return []can.Frame{frame}
+}
+
+func buildRelayFrames(instance uint8, cfg RelayConfig) []can.Frame {
+	payload := [7]byte{
+		configDataElementRelay,
+		cfg.Function,
+		cfg.InputIndex,
+		cfg.DefaultMode,
+		cfg.DefaultState,
+		cfg.OnTimeTenths,
+		cfg.OffTimeTenths,
+	}
+
+	frame := newConfigSetFrame(instance, payload[:])
+	return []can.Frame{frame}
+}
+
+func buildLabelFrames(instance uint8, label string) []can.Frame {
+	var raw [12]byte
+	copy(raw[:], []byte(label))
+
+	payload1 := [8]byte{configDataElementLabel, 0}
+	copy(payload1[2:], raw[0:6])
+
+	payload2 := [8]byte{configDataElementLabel, 1}
+	copy(payload2[2:], raw[6:12])
+
+	frame1 := newConfigSetFrame(instance, payload1[:])
+	frame2 := newConfigSetFrame(instance, payload2[:])
+
+	return []can.Frame{frame1, frame2}
+}
+
+func newConfigSetFrame(instance uint8, payload []byte) can.Frame {
+	frame := can.Frame{
+		ID: makeCanID(
+			priorityMaintenance,
+			classActuation,
+			functionConfigSet,
+			sourceTestNode,
+			uint32(instance),
+		),
+		Length: uint8(len(payload)),
+	}
+
+	if len(payload) > len(frame.Data) {
+		log.Printf("config set payload too large (%d bytes); truncating", len(payload))
+		copy(frame.Data[:], payload[:len(frame.Data)])
+		frame.Length = uint8(len(frame.Data))
+		return frame
+	}
+
+	copy(frame.Data[:], payload)
+	return frame
+}
+
+func encodeMsToTenths(ms uint16) uint8 {
+	if ms == 0 {
+		return 0
+	}
+
+	value := (uint32(ms) + 5) / 10
+	if value == 0 {
+		value = 1
+	}
+	if value > 255 {
+		value = 255
+	}
+
+	return uint8(value)
+}
+
+func encodeMsToHundreds(ms uint32) uint8 {
+	if ms == 0 {
+		return 0
+	}
+
+	value := (ms + 50) / 100
+	if value == 0 {
+		value = 1
+	}
+	if value > 255 {
+		value = 255
+	}
+
+	return uint8(value)
 }
 
 func markConfigRequestComplete(element, instance uint8) {
@@ -1151,6 +1538,7 @@ func main() {
 	canbus = bus
 
 	startConfigRequestWorker()
+	startConfigUpdateWorker()
 
 	// Subscribe for RCD telemetry and config replies
 	bus.SubscribeFunc(rcdTelemetryHandler)
